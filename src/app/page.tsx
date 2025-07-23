@@ -79,10 +79,10 @@ export default function Home() {
     <div className="min-h-screen bg-black relative overflow-hidden select-none">
       {/* Dot Pattern Overlay - Optimized for performance */}
       <DotPattern
-        width={20}
-        height={20}
-        cx={2}
-        cy={2}
+        width={12}
+        height={12}
+        cx={1}
+        cy={1}
         cr={1}
         glow={true}
         className="text-purple-400/50 sm:text-purple-400/70"
@@ -103,10 +103,49 @@ export default function Home() {
           <span className="text-white text-xl sm:text-2xl lg:text-3xl font-semibold tracking-tight">Memoric</span>
         </div>
 
-        <div className="flex items-center space-x-3 sm:space-x-6">
+        <div className="flex items-center space-x-2 sm:space-x-3 md:space-x-6">
           <SignedOut>
+            <button
+              onClick={() => router.push('/how-it-works')}
+              className="bg-white/10 backdrop-blur-lg border border-white/20 text-white px-3 py-2 sm:px-6 lg:px-8 sm:py-2.5 rounded-xl sm:rounded-2xl lg:rounded-3xl text-sm sm:text-base font-medium hover:bg-white/20 hover:border-white/30 transition-all duration-300 transform hover:scale-105 cursor-pointer shadow-lg shadow-white/5"
+            >
+              <div className="flex items-center space-x-1 sm:space-x-2">
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="text-white sm:w-4 sm:h-4"
+                >
+                  <circle
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  />
+                  <path
+                    d="M12 16V12"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                  <path
+                    d="M12 8H12.01"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+                <span className="hidden sm:inline font-medium">How It Works</span>
+              </div>
+            </button>
+
             <SignInButton>
-              <button className="bg-white text-black border border-gray-300 px-4 py-2 sm:px-8 lg:px-12 sm:py-2.5 rounded-2xl sm:rounded-3xl text-sm sm:text-base font-medium shadow-lg hover:shadow-xl hover:bg-gray-50 hover:border-gray-400 transition-all duration-300 transform hover:scale-105 cursor-pointer">
+              <button className="bg-white text-black border border-gray-300 px-4 py-2 sm:px-6 md:px-8 lg:px-12 sm:py-2.5 rounded-2xl sm:rounded-3xl text-sm sm:text-base font-medium shadow-lg hover:shadow-xl hover:bg-gray-50 hover:border-gray-400 transition-all duration-300 transform hover:scale-105 cursor-pointer">
                 <div className="flex items-center space-x-1 sm:space-x-2">
                   <svg
                     width="14"
@@ -146,10 +185,50 @@ export default function Home() {
 
           <SignedIn>
             <button
+              onClick={() => router.push('/how-it-works')}
+              className="bg-white/10 backdrop-blur-lg border border-white/20 text-white px-3 py-2 sm:px-6 lg:px-8 sm:py-2.5 rounded-xl sm:rounded-2xl lg:rounded-3xl text-sm sm:text-base font-medium hover:bg-white/20 hover:border-white/30 transition-all duration-300 transform hover:scale-105 cursor-pointer shadow-lg shadow-white/5"
+            >
+              <div className="flex items-center space-x-1 sm:space-x-2">
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="text-white sm:w-4 sm:h-4"
+                >
+                  <circle
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  />
+                  <path
+                    d="M12 16V12"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                  <path
+                    d="M12 8H12.01"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+                <span className="hidden sm:inline font-medium">How It Works</span>
+              </div>
+            </button>
+
+            <button
               onClick={() => router.push('/dashboard')}
               className="bg-gradient-to-r from-purple-600/80 to-pink-600/80 backdrop-blur-md border border-purple-400/30 text-white px-4 py-2 sm:px-6 lg:px-8 sm:py-3 rounded-xl sm:rounded-2xl hover:from-purple-700/80 hover:to-pink-700/80 transition-all duration-300 text-sm sm:text-base font-medium shadow-lg hover:shadow-xl transform hover:scale-105"
             >
-              My Space
+              <span className="hidden sm:inline">My Space</span>
+              <span className="sm:hidden">Space</span>
             </button>
             <div className="bg-white/10 backdrop-blur-md border border-white/20 rounded-xl sm:rounded-2xl p-1">
               <UserButton />

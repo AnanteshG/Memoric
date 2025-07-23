@@ -105,18 +105,24 @@ const DotPattern = memo(function DotPattern({
         const numCols = Math.ceil(dimensions.width / width);
         const numRows = Math.ceil(dimensions.height / height);
 
+        // Maximize dot density with optimized performance
+        const maxDots = 8000; // Even higher limit for maximum dots
+        const totalDots = numCols * numRows;
+        const skipFactor = totalDots > maxDots ? Math.ceil(totalDots / maxDots) : 1;
+
         const dots = [];
-        for (let row = 0; row < numRows; row++) {
-            for (let col = 0; col < numCols; col++) {
-                const shouldAnimate = glow && Math.random() > 0.3; // 70% chance to animate
+        for (let row = 0; row < numRows; row += skipFactor) {
+            for (let col = 0; col < numCols; col += skipFactor) {
+                // Increase animation percentage for more movement
+                const shouldAnimate = glow && Math.random() > 0.75; // 25% animate for more activity
                 dots.push({
                     x: col * width + cx,
                     y: row * height + cy,
                     animate: shouldAnimate,
-                    delay: shouldAnimate ? Math.random() * 8 : 0, // Longer delay range for more randomness
-                    duration: shouldAnimate ? Math.random() * 4 + 3 : 0, // 3-7 seconds duration
-                    baseOpacity: shouldAnimate ? 0.3 : 0.2, // Slightly dimmer base for non-animated
-                    peakOpacity: shouldAnimate ? 0.8 : 0.2, // Brighter peak for animated
+                    delay: shouldAnimate ? Math.random() * 8 : 0, // Faster start times
+                    duration: shouldAnimate ? Math.random() * 2 + 2 : 0, // 2-4 seconds for faster animations
+                    baseOpacity: shouldAnimate ? 0.35 : 0.25, // Higher base opacity
+                    peakOpacity: shouldAnimate ? 0.9 : 0.25, // Stronger peak for visibility
                 });
             }
         }
@@ -152,9 +158,12 @@ const DotPattern = memo(function DotPattern({
                             repeat: Infinity,
                             repeatType: "reverse",
                             delay: dot.delay,
-                            ease: "easeInOut",
+                            ease: "easeInOut", // Smoother easing for better visual appeal
                         }}
-                        style={{ willChange: 'opacity' }}
+                        style={{
+                            willChange: 'opacity',
+                            transform: 'translateZ(0)', // Force GPU acceleration
+                        }}
                     />
                 ) : (
                     <circle
@@ -164,6 +173,7 @@ const DotPattern = memo(function DotPattern({
                         r={cr}
                         fill="currentColor"
                         opacity={dot.baseOpacity}
+                        style={{ transform: 'translateZ(0)' }} // GPU acceleration for static dots too
                     />
                 )
             )}
