@@ -96,16 +96,21 @@ export default function HowItWorks() {
                 </div>
 
                 <div className="flex items-center space-x-2 sm:space-x-4">
-                    <div className="relative w-10 h-10 sm:w-12 sm:h-12 md:w-16 md:h-16">
-                        <Image
-                            src="/assets/Logo.png"
-                            alt="Memoric Logo"
-                            width={64}
-                            height={64}
-                            className="rounded-lg"
-                        />
-                    </div>
-                    <span className="text-white text-lg sm:text-xl md:text-2xl lg:text-3xl font-semibold tracking-tight">Memoric</span>
+                    <button
+                        onClick={() => router.push('/')}
+                        className="flex items-center space-x-2 hover:opacity-80 transition-opacity duration-200"
+                    >
+                        <div className="relative w-10 h-10 sm:w-12 sm:h-12 md:w-16 md:h-16">
+                            <Image
+                                src="/assets/Logo.png"
+                                alt="Memoric Logo"
+                                width={64}
+                                height={64}
+                                className="rounded-lg"
+                            />
+                        </div>
+                        <span className="text-white text-lg sm:text-xl md:text-2xl lg:text-3xl font-semibold tracking-tight">Memoric</span>
+                    </button>
                 </div>
 
                 <div className="flex items-center space-x-2 sm:space-x-3 md:space-x-6">
@@ -151,11 +156,11 @@ export default function HowItWorks() {
 
                     <SignedIn>
                         <button
-                            onClick={() => router.push('/dashboard')}
-                            className="bg-gradient-to-r from-purple-600/80 to-pink-600/80 backdrop-blur-md border border-purple-400/30 text-white px-3 py-2 sm:px-6 lg:px-8 sm:py-3 rounded-xl sm:rounded-2xl hover:from-purple-700/80 hover:to-pink-700/80 transition-all duration-300 text-sm sm:text-base font-medium shadow-lg hover:shadow-xl transform hover:scale-105"
+                            onClick={() => router.push('/space')}
+                            className="bg-white/10 backdrop-blur-lg border border-white/20 text-white px-3 py-2 sm:px-6 lg:px-8 sm:py-2.5 rounded-xl sm:rounded-2xl lg:rounded-3xl text-sm sm:text-base font-medium hover:bg-white/20 hover:border-white/30 transition-all duration-300 transform hover:scale-105 cursor-pointer shadow-lg shadow-white/5"
                         >
-                            <span className="hidden sm:inline">My Space</span>
-                            <span className="sm:hidden">Space</span>
+                            <span className="font-medium hidden sm:inline">My Space</span>
+                            <span className="font-medium sm:hidden">Space</span>
                         </button>
                         <div className="bg-white/10 backdrop-blur-md border border-white/20 rounded-xl sm:rounded-2xl p-1">
                             <UserButton />
