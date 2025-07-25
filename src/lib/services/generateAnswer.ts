@@ -52,7 +52,7 @@ Instructions:
 - If no relevant stored information is available, provide an answer using your general knowledge
 - Be conversational and helpful
 - Don't mention that you're using stored information unless it adds value
-- Cite specific content types when relevant (e.g., "from your YouTube video about...", "in your document...", "from your note about...")
+- Cite specific content types when relevant (e.g., "from your YouTube video about...", "from your note...", "from your post about...")
 
 User's Question: "${query}"
 

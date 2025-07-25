@@ -420,7 +420,7 @@ export default function Home() {
 
         <p className="text-base sm:text-lg lg:text-xl text-gray-300 mb-8 sm:mb-12 max-w-xl sm:max-w-2xl font-normal leading-relaxed px-2">
           Store, search, and interact with your digital content using AI.
-          Upload documents, save tweets, add notes, and chat with your data.
+          Upload content, save tweets, add notes, and chat with your data.
         </p>
 
         {/* Input Section */}

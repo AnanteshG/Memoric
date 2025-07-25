@@ -211,24 +211,24 @@ async function searchUserContent(userId: string, searchQuery: string) {
       }
     }
     
-    // 4. Special handling for document types (PDFs, resumes, etc.)
-    let hasDocumentMatch = false;
-    if (item.type === 'document') {
-      // If it's a resume/CV and query mentions projects, include it
-      if ((queryLower.includes('project') || queryLower.includes('work') || queryLower.includes('experience')) && 
-          (title.includes('resume') || title.includes('cv'))) {
-        hasDocumentMatch = true;
-        console.log(`✅ Document type match found for resume/CV: ${item.title}`);
+    // 4. Special handling for specific content types
+    let hasSpecialMatch = false;
+    if (item.type === 'youtube' || item.type === 'reddit' || item.type === 'tweet') {
+      // If it's media content and query mentions media-related terms
+      if ((queryLower.includes('video') || queryLower.includes('watch') || queryLower.includes('youtube')) && 
+          (title.includes('video') || item.type === 'youtube')) {
+        hasSpecialMatch = true;
+        console.log(`✅ Media type match found for YouTube: ${item.title}`);
       }
       
-      // If query mentions a name and document title contains it
-      if (queryLower.includes('anantesh') && title.includes('anantesh')) {
-        hasDocumentMatch = true;
-        console.log(`✅ Document name match found: ${item.title}`);
+      // If query mentions a name and content title contains it
+      if (queryLower.includes('content') && title.includes('content')) {
+        hasSpecialMatch = true;
+        console.log(`✅ Content name match found: ${item.title}`);
       }
     }
     
-    const matches = hasDirectMatch || hasPartialMatch || hasFuzzyMatch || hasDocumentMatch;
+    const matches = hasDirectMatch || hasPartialMatch || hasFuzzyMatch || hasSpecialMatch;
     
     if (matches) {
       console.log('✅ Overall match found in item:', item.title || item.id);
@@ -288,8 +288,8 @@ async function searchUserContent(userId: string, searchQuery: string) {
       if ((term === 'project' || term === 'projects') && (allText.includes('project') || allText.includes('built') || allText.includes('developed'))) score += 3;
     });
     
-    // Bonus for resume/CV documents when asking about projects
-    if (queryLower.includes('project') && (item.title?.toLowerCase().includes('resume') || item.title?.toLowerCase().includes('cv'))) {
+    // Bonus for media content when asking about videos
+    if (queryLower.includes('video') && item.type === 'youtube') {
       score += 5;
     }
     
@@ -353,11 +353,8 @@ export async function POST(req: NextRequest) {
           contextText += `   Summary: ${item.summary}\n`;
         }
         
-        // For documents (PDFs), prioritize the extracted content
-        if (item.type === 'document' && item.content) {
-          // Use more content for documents since they're likely to be important
-          contextText += `   Document Content: ${item.content.substring(0, 2000)}${item.content.length > 2000 ? '...' : ''}\n`;
-        } else if (item.content) {
+        // For content with URLs, prioritize the content
+        if (item.content) {
           contextText += `   Content: ${item.content.substring(0, 800)}${item.content.length > 800 ? '...' : ''}\n`;
         }
         
@@ -381,9 +378,9 @@ export async function POST(req: NextRequest) {
           contextText += `   Transcript: ${item.metadata.transcript.substring(0, 500)}${item.metadata.transcript.length > 500 ? '...' : ''}\n`;
         }
         
-        // Document-specific metadata
-        if (item.metadata?.documentType) {
-          contextText += `   Document Type: ${item.metadata.documentType}\n`;
+        // Content-specific metadata
+        if (item.metadata?.contentType) {
+          contextText += `   Content Type: ${item.metadata.contentType}\n`;
         }
         if (item.metadata?.keyTopics && Array.isArray(item.metadata.keyTopics)) {
           contextText += `   Key Topics: ${item.metadata.keyTopics.join(', ')}\n`;
@@ -429,7 +426,7 @@ export async function POST(req: NextRequest) {
     1. ALWAYS check the provided knowledge base content above for relevant information
     2. If you find relevant information in the knowledge base, use it to answer the question and cite the specific sources
     3. If no relevant information is found in the knowledge base, clearly state this and explain what you found instead
-    4. Be specific about which documents or sources you're referencing
+    4. Be specific about which content sources you're referencing
     5. Provide helpful and accurate responses based on the available information
     
     ${relevantContent.length === 0 ? 

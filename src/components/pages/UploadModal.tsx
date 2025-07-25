@@ -23,7 +23,6 @@ export default function UploadModal({ type: initialType, isOpen, onClose, onSucc
 
     const contentTypes = [
         { id: 'text', label: 'Text Note', icon: FileText, description: 'Write notes and ideas' },
-        { id: 'document', label: 'Document', icon: Upload, description: 'Upload PDF, DOCX, or TXT files' },
         { id: 'image', label: 'Image', icon: ImageIcon, description: 'Upload images with descriptions' },
         { id: 'tweet', label: 'X Post', icon: MessageSquare, description: 'Save X posts or threads' },
         { id: 'reddit', label: 'Reddit Post', icon: Globe, description: 'Save Reddit posts and discussions' },

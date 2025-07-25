@@ -83,7 +83,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// Add new content (note, tweet, website, document, image, youtube, reddit)
+// Add new content (note, x post, website, document, image, youtube, reddit)
 export async function POST(req: NextRequest) {
   try {
     const { userId } = await auth();
@@ -116,11 +116,11 @@ export async function POST(req: NextRequest) {
             externalData = result.data;
             finalContent = finalContent || externalData.text;
             
-            // Generate AI title for tweet
+            // Generate AI title for X post
             if (externalData.text && !finalTitle) {
               try {
                 const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
-                const titlePrompt = `Generate a concise, descriptive title (max 60 characters) for this tweet content: "${externalData.text.substring(0, 200)}"
+                const titlePrompt = `Generate a concise, descriptive title (max 60 characters) for this X post content: "${externalData.text.substring(0, 200)}"
                 
                 Return only the title, no quotes or extra text.`;
                 
@@ -165,7 +165,7 @@ export async function POST(req: NextRequest) {
 
     // Handle different content types
     if (type === "tweet" && url) {
-      // Check for existing tweet
+      // Check for existing X post
       const contentRef = collection(db, 'content');
       const q = query(
         contentRef,
@@ -176,7 +176,7 @@ export async function POST(req: NextRequest) {
       
       const snapshot = await getDocs(q);
       if (!snapshot.empty) {
-        return NextResponse.json({ error: "Tweet already saved" }, { status: 409 });
+        return NextResponse.json({ error: "X post already saved" }, { status: 409 });
       }
       
       finalContent = content || finalContent || url;
@@ -185,7 +185,7 @@ export async function POST(req: NextRequest) {
       if (!finalTitle && finalContent) {
         try {
           const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
-          const titlePrompt = `Generate a concise, descriptive title (max 60 characters) for this tweet: "${finalContent.substring(0, 200)}"
+          const titlePrompt = `Generate a concise, descriptive title (max 60 characters) for this X post: "${finalContent.substring(0, 200)}"
           
           Return only the title, no quotes or extra text.`;
           
@@ -200,7 +200,7 @@ export async function POST(req: NextRequest) {
       
       // Fallback title if still empty
       if (!finalTitle) {
-        finalTitle = `Tweet from ${url}`;
+        finalTitle = `X post from ${url}`;
       }
     }
 
@@ -250,21 +250,35 @@ export async function POST(req: NextRequest) {
         if (jsonMatch) {
           const parsed = JSON.parse(jsonMatch[0]);
           summary = parsed.summary || finalContent.substring(0, 200) + '...';
-          tags = parsed.tags || ['general'];
+          
+          // Filter out unwanted AI/LLM related tags
+          const rawTags = parsed.tags || ['general'];
+          const unwantedTags = ['ai', 'llm', 'artificial intelligence', 'machine learning', 'generated', 'automated', 'bot'];
+          tags = rawTags.filter((tag: string) => 
+            !unwantedTags.some(unwanted => 
+              tag.toLowerCase().includes(unwanted)
+            )
+          );
+          
+          // Ensure we have at least one tag
+          if (tags.length === 0) {
+            tags = ['general'];
+          }
+          
           aiProcessedContent = parsed.insights || finalContent;
         }
       } catch (parseError) {
         console.error('JSON parsing error:', parseError);
         // Fallback processing
         summary = finalContent.substring(0, 200) + '...';
-        tags = [type, 'unprocessed'];
+        tags = [type, 'content'];
       }
 
     } catch (aiError) {
       console.error('AI processing error:', aiError);
       // Fallback processing without AI
       summary = finalContent.substring(0, 200) + '...';
-      tags = [type, 'manual'];
+      tags = [type, 'saved'];
     }
 
     const contentId = uuidv4();
@@ -272,19 +286,22 @@ export async function POST(req: NextRequest) {
 
     // Store in Firebase with AI-processed data and external API data
     const contentRef = collection(db, 'content');
-    const docRef = await addDoc(contentRef, {
+    
+    // Create the base document data
+    const docData: any = {
       title: finalTitle,
       content: finalContent,
       processedContent: aiProcessedContent,
       summary,
       tags,
       originalLink: url || "",
+      url: url || "",
       type,
       userId,
       contentId,
       timestamp,
       metadata: metadata || {},
-      externalData: externalData || null, // Store external API data
+      externalData: externalData || null,
       createdAt: new Date(),
       aiProcessed: true,
       // Add specific fields for display
@@ -297,7 +314,28 @@ export async function POST(req: NextRequest) {
         comments: externalData?.num_comments || externalData?.commentCount || 0,
         score: externalData?.score || 0
       }
-    });
+    };
+
+    // Add structured postData for X/Twitter posts
+    if ((type === 'tweet' || type === 'x') && externalData) {
+      docData.tweetData = {
+        id: externalData.id,
+        text: externalData.text,
+        username: externalData.author?.name || 'X User',
+        handle: externalData.author?.username || 'x_user',
+        timestamp: externalData.created_at || new Date().toISOString(),
+        metrics: {
+          likes: externalData.public_metrics?.like_count || 0,
+          retweets: externalData.public_metrics?.repost_count || 0,
+          replies: externalData.public_metrics?.reply_count || 0,
+          views: externalData.public_metrics?.view_count || 0
+        },
+        images: externalData.attachments?.media_keys || [],
+        url: url || ""
+      };
+    }
+
+    const docRef = await addDoc(contentRef, docData);
 
     // TODO: Store embeddings in vector database (Pinecone, etc.)
     // const embeddings = await generateEmbeddings(aiProcessedContent);

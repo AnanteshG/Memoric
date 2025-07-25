@@ -1,14 +1,13 @@
 'use client';
 
-import { SignedIn, SignedOut } from '@clerk/nextjs';
+import { SignedIn } from '@clerk/nextjs';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { DotPattern } from '@/components/ui/dot-pattern';
 import UploadModal from '@/components/pages/UploadModal';
-import PdfPreview from '@/components/ui/PdfPreview';
+import { XCard } from '@/components/ui/XCard';
 import { useState, useCallback, useEffect } from 'react';
 import {
-    Upload,
     FileText,
     Image as ImageIcon,
     MessageSquare,
@@ -24,8 +23,6 @@ import {
     Clock,
     Star,
     Eye,
-    Download,
-    Share,
     Loader,
     RefreshCw,
     Trash2,
@@ -36,7 +33,6 @@ import {
     Edit3,
     Repeat2,
     BarChart3,
-    CheckCircle,
 } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
@@ -44,7 +40,7 @@ export const dynamic = 'force-dynamic';
 // Define the types for content items
 interface ContentItem {
     id: string;
-    type: 'tweet' | 'reddit' | 'image' | 'youtube' | 'text' | 'document';
+    type: 'tweet' | 'reddit' | 'image' | 'youtube' | 'text';
     title: string;
     content: string;
     summary?: string;
@@ -63,16 +59,19 @@ interface ContentItem {
     };
     // X (formerly Twitter) specific data
     tweetData?: {
+        id: string;
+        text: string;
         username: string;
         handle: string;
-        verified: boolean;
-        profileImage: string;
-        tweetText: string;
         timestamp: string;
-        replies: number;
-        retweets: number;
-        likes: number;
-        views?: number;
+        metrics: {
+            likes: number;
+            retweets: number;
+            replies: number;
+            views?: number;
+        };
+        images: string[];
+        url: string;
     };
 }
 
@@ -162,9 +161,60 @@ export default function Space() {
         }
     }, [fetchUserStats]);
 
+    // Handle opening content
+    const handleOpenContent = useCallback((item: ContentItem) => {
+        console.log('🔗 Opening content:', item);
+        console.log('🔗 Content URL:', item.url);
+        console.log('🔗 Content type:', item.type);
+        console.log('🔗 Content title:', item.title);
+
+        // Enhanced content opening logic based on type
+        if (item.type === 'tweet') {
+            // For tweets, construct the Twitter URL or use stored URL
+            const tweetUrl = item.url ||
+                (item.tweetData ? `https://twitter.com/${item.tweetData.handle}/status/${(item as any).tweetId || 'unknown'}` : null);
+
+            if (tweetUrl) {
+                console.log('🐦 Opening tweet URL:', tweetUrl);
+                window.open(tweetUrl, '_blank');
+            } else {
+                console.log('🐦 No tweet URL available');
+                alert(`Tweet "${item.title}" - No original tweet URL available.`);
+            }
+        } else if (item.type === 'youtube') {
+            // For YouTube videos
+            const youtubeUrl = item.url || (item as any).originalLink;
+            if (youtubeUrl) {
+                console.log('� Opening YouTube URL:', youtubeUrl);
+                window.open(youtubeUrl, '_blank');
+            } else {
+                alert(`YouTube video "${item.title}" - No URL available.`);
+            }
+        } else if (item.type === 'reddit') {
+            // For Reddit posts
+            const redditUrl = item.url || (item as any).originalLink;
+            if (redditUrl) {
+                console.log('🔴 Opening Reddit URL:', redditUrl);
+                window.open(redditUrl, '_blank');
+            } else {
+                alert(`Reddit post "${item.title}" - No URL available.`);
+            }
+        } else if (item.url) {
+            // Generic case - if there's a URL, open it
+            console.log('✅ Opening URL in new tab:', item.url);
+            window.open(item.url, '_blank');
+        } else {
+            // For content without URLs (like notes, uploaded documents), 
+            // we could implement a modal or detailed view
+            console.log('❌ No URL found for content. Item data:', item);
+            console.log('📄 Full item object:', JSON.stringify(item, null, 2));
+
+            alert(`Content "${item.title}" clicked! This ${item.type} doesn't have an external URL to open. Check console for full data.`);
+        }
+    }, []);
+
     const categories = [
         { id: 'all', name: 'All Content', icon: Grid, count: contentItems.length },
-        { id: 'document', name: 'Documents', icon: FileText, count: contentItems.filter(item => item.type === 'document').length },
         { id: 'tweet', name: 'X Posts', icon: MessageSquare, count: contentItems.filter(item => item.type === 'tweet').length },
         { id: 'reddit', name: 'Reddit', icon: Globe, count: contentItems.filter(item => item.type === 'reddit').length },
         { id: 'youtube', name: 'YouTube', icon: Youtube, count: contentItems.filter(item => item.type === 'youtube').length },
@@ -172,14 +222,7 @@ export default function Space() {
         { id: 'text', name: 'Notes', icon: FileText, count: contentItems.filter(item => item.type === 'text').length }
     ];
 
-    const uploadOptions = [
-        { id: 'document', name: 'Upload Document', icon: FileText, description: 'PDF, DOCX, TXT files', color: 'from-blue-500 to-cyan-500' },
-        { id: 'tweet', name: 'Save X Post', icon: MessageSquare, description: 'X URLs or screenshots', color: 'from-sky-500 to-blue-500' },
-        { id: 'reddit', name: 'Save Reddit Post', icon: Globe, description: 'Reddit post URLs', color: 'from-orange-500 to-red-500' },
-        { id: 'youtube', name: 'Save YouTube Video', icon: Youtube, description: 'YouTube video URLs', color: 'from-red-500 to-pink-500' },
-        { id: 'image', name: 'Upload Image', icon: ImageIcon, description: 'JPG, PNG, GIF files', color: 'from-green-500 to-emerald-500' },
-        { id: 'text', name: 'Create Note', icon: FileText, description: 'Text notes and ideas', color: 'from-purple-500 to-violet-500' }
-    ];
+    const uploadOptions = [];
 
     const filteredItems = contentItems.filter(item => {
         const matchesCategory = selectedCategory === 'all' || item.type === selectedCategory;
@@ -192,7 +235,6 @@ export default function Space() {
 
     const getTypeIcon = (type: string) => {
         switch (type) {
-            case 'document': return FileText;
             case 'tweet': return MessageSquare;
             case 'reddit': return Globe;
             case 'youtube': return Youtube;
@@ -204,7 +246,6 @@ export default function Space() {
 
     const getTypeColor = (type: string) => {
         switch (type) {
-            case 'document': return 'text-blue-400';
             case 'tweet': return 'text-sky-400';
             case 'reddit': return 'text-orange-400';
             case 'youtube': return 'text-red-400';
@@ -449,7 +490,10 @@ export default function Space() {
                                             return (
                                                 <div className="relative">
                                                     <button
-                                                        onClick={() => setShowMenu(!showMenu)}
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setShowMenu(!showMenu);
+                                                        }}
                                                         className="p-1.5 text-gray-400 hover:text-white rounded-lg hover:bg-white/10 transition-all duration-200"
                                                     >
                                                         <MoreHorizontal size={16} />
@@ -457,7 +501,8 @@ export default function Space() {
                                                     {showMenu && (
                                                         <div className="absolute right-0 top-8 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-50 min-w-[120px]">
                                                             <button
-                                                                onClick={() => {
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
                                                                     if (item.url) window.open(item.url, '_blank');
                                                                     setShowMenu(false);
                                                                 }}
@@ -467,7 +512,8 @@ export default function Space() {
                                                                 <span>Open</span>
                                                             </button>
                                                             <button
-                                                                onClick={() => {
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
                                                                     // TODO: Implement edit functionality
                                                                     setShowMenu(false);
                                                                 }}
@@ -477,7 +523,8 @@ export default function Space() {
                                                                 <span>Edit</span>
                                                             </button>
                                                             <button
-                                                                onClick={async () => {
+                                                                onClick={async (e) => {
+                                                                    e.stopPropagation();
                                                                     setShowMenu(false);
                                                                     if (confirm('Are you sure you want to delete this content?')) {
                                                                         await handleDeleteContent(item.id);
@@ -494,107 +541,33 @@ export default function Space() {
                                             );
                                         };
 
-                                        // X Card Component
-                                        const XCard = ({ item }: { item: ContentItem }) => (
-                                            <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl hover:border-blue-400/50 hover:shadow-2xl hover:shadow-blue-500/10 transition-all duration-300 group cursor-pointer overflow-hidden">
-                                                {/* Header */}
-                                                <div className="p-6 pb-4">
-                                                    <div className="flex items-start justify-between mb-4">
-                                                        <div className="flex items-center space-x-3">
-                                                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-sky-600 flex items-center justify-center flex-shrink-0">
-                                                                <X size={16} className="text-white" />
-                                                            </div>
-                                                            <div className="min-w-0 flex-1">
-                                                                <h3 className="text-white font-medium text-sm truncate">
-                                                                    {item.tweetData?.username || item.author || 'X Post'}
-                                                                </h3>
-                                                                <p className="text-blue-300 text-xs">
-                                                                    @{item.tweetData?.handle || 'x_user'}
-                                                                </p>
-                                                            </div>
-                                                        </div>
-                                                        <CardActionMenu item={item} />
-                                                    </div>
-
-                                                    {/* Post Content */}
-                                                    <div className="mb-4">
-                                                        <p className="text-gray-200 text-sm leading-relaxed line-clamp-4">
-                                                            {item.tweetData?.tweetText || item.content}
-                                                        </p>
-                                                    </div>
-
-                                                    {/* Post Image */}
-                                                    {item.thumbnail && (
-                                                        <div className="w-full h-44 bg-gray-800/50 rounded-xl mb-4 overflow-hidden">
-                                                            <Image
-                                                                src={item.thumbnail}
-                                                                alt="Post image"
-                                                                width={400}
-                                                                height={200}
-                                                                className="w-full h-full object-cover"
-                                                            />
-                                                        </div>
-                                                    )}
-
-                                                    {/* Metrics */}
-                                                    {((item.tweetData?.likes || item.metrics?.likes || 0) > 0 ||
-                                                        (item.tweetData?.replies || item.metrics?.comments || 0) > 0 ||
-                                                        (item.tweetData?.retweets || 0) > 0) && (
-                                                            <div className="flex items-center space-x-4 mb-4 text-xs text-blue-300/80">
-                                                                {(item.tweetData?.likes || item.metrics?.likes || 0) > 0 && (
-                                                                    <div className="flex items-center space-x-1">
-                                                                        <Heart size={12} className="text-pink-400" />
-                                                                        <span>{(item.tweetData?.likes || item.metrics?.likes || 0).toLocaleString()}</span>
-                                                                    </div>
-                                                                )}
-                                                                {(item.tweetData?.replies || item.metrics?.comments || 0) > 0 && (
-                                                                    <div className="flex items-center space-x-1">
-                                                                        <MessageSquare size={12} />
-                                                                        <span>{(item.tweetData?.replies || item.metrics?.comments || 0).toLocaleString()}</span>
-                                                                    </div>
-                                                                )}
-                                                                {(item.tweetData?.retweets || 0) > 0 && (
-                                                                    <div className="flex items-center space-x-1">
-                                                                        <Repeat2 size={12} />
-                                                                        <span>{item.tweetData?.retweets?.toLocaleString()}</span>
-                                                                    </div>
-                                                                )}
-                                                            </div>
-                                                        )}
-
-                                                    {/* Tags */}
-                                                    {item.tags && item.tags.length > 0 && (
-                                                        <div className="flex flex-wrap gap-1.5 mb-4">
-                                                            {item.tags.slice(0, 3).map((tag, index) => (
-                                                                <span
-                                                                    key={index}
-                                                                    className="bg-blue-500/10 border border-blue-500/20 text-blue-400 px-2.5 py-1 rounded-full text-xs font-medium"
-                                                                >
-                                                                    {tag}
-                                                                </span>
-                                                            ))}
-                                                            {item.tags.length > 3 && (
-                                                                <span className="text-blue-400/60 text-xs px-2 py-1 font-medium">
-                                                                    +{item.tags.length - 3}
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                    )}
-                                                </div>
-
-                                                {/* Footer */}
-                                                <div className="px-6 py-3 bg-blue-500/5 border-t border-blue-500/10 flex items-center justify-between text-xs">
-                                                    <span className="text-gray-400">{createdAt.toLocaleDateString()}</span>
-                                                    <span className="bg-blue-500/20 text-blue-300 px-2 py-1 rounded-full font-medium">
-                                                        X Post
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        );
+                                        // Use the XCard component for tweets
+                                        if (item.type === 'tweet') {
+                                            return (
+                                                <XCard
+                                                    key={item.id}
+                                                    id={item.id}
+                                                    title={item.title}
+                                                    tweetData={item.tweetData}
+                                                    url={item.url}
+                                                    createdAt={item.createdAt}
+                                                    tags={item.tags}
+                                                    onDelete={() => handleDeleteContent(item.id)}
+                                                    onTitleChange={(newTitle) => {
+                                                        // TODO: Implement title update
+                                                        console.log('Update title:', newTitle);
+                                                    }}
+                                                    onClick={() => handleOpenContent(item)}
+                                                />
+                                            );
+                                        }
 
                                         // YouTube Card Component
                                         const YouTubeCard = ({ item }: { item: ContentItem }) => (
-                                            <div className="bg-gradient-to-br from-red-900/20 to-red-800/20 backdrop-blur-sm border border-red-500/30 rounded-xl hover:border-red-400/50 transition-all duration-300 group cursor-pointer p-6">
+                                            <div
+                                                className="bg-gradient-to-br from-red-900/20 to-red-800/20 backdrop-blur-sm border border-red-500/30 rounded-xl hover:border-red-400/50 transition-all duration-300 group cursor-pointer p-6"
+                                                onClick={() => handleOpenContent(item)}
+                                            >
                                                 {/* Header with action menu */}
                                                 <div className="flex items-center justify-between mb-4">
                                                     <div className="flex items-center space-x-3">
@@ -688,92 +661,12 @@ export default function Space() {
                                             </div>
                                         );
 
-                                        // Document/PDF Card Component
-                                        const DocumentCard = ({ item }: { item: ContentItem }) => (
-                                            <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl hover:border-emerald-400/50 hover:shadow-2xl hover:shadow-emerald-500/10 transition-all duration-300 group cursor-pointer overflow-hidden">
-                                                {/* Header */}
-                                                <div className="p-6 pb-4">
-                                                    <div className="flex items-start justify-between mb-4">
-                                                        <div className="flex items-center space-x-3">
-                                                            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-green-600 flex items-center justify-center flex-shrink-0">
-                                                                <FileText size={16} className="text-white" />
-                                                            </div>
-                                                            <div className="min-w-0 flex-1">
-                                                                <h3 className="text-white font-medium text-sm line-clamp-2 leading-5">
-                                                                    {item.title}
-                                                                </h3>
-                                                                <p className="text-emerald-300 text-xs mt-1">
-                                                                    {item.size || 'PDF Document'}
-                                                                </p>
-                                                            </div>
-                                                        </div>
-                                                        <CardActionMenu item={item} />
-                                                    </div>
-
-                                                    {/* PDF Preview */}
-                                                    {item.type === 'document' ? (
-                                                        <div className="mb-4">
-                                                            <PdfPreview
-                                                                url={item.url || ''}
-                                                                title={item.title}
-                                                                onClick={() => window.open(item.url, '_blank')}
-                                                            />
-                                                        </div>
-                                                    ) : (
-                                                        <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-xl p-4 mb-4">
-                                                            <div className="flex items-center space-x-2 mb-3">
-                                                                <Eye size={14} className="text-emerald-400" />
-                                                                <span className="text-emerald-300 text-xs font-medium">Document Preview</span>
-                                                            </div>
-                                                            <div className="text-gray-200 text-sm leading-relaxed">
-                                                                <div className="line-clamp-6">
-                                                                    {item.content.length > 300
-                                                                        ? `${item.content.substring(0, 300)}...`
-                                                                        : item.content
-                                                                    }
-                                                                </div>
-                                                            </div>
-                                                            {item.content.length > 300 && (
-                                                                <div className="mt-2 text-emerald-400 text-xs font-medium">
-                                                                    Click to read more
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    )}
-
-                                                    {/* Tags */}
-                                                    {item.tags && item.tags.length > 0 && (
-                                                        <div className="flex flex-wrap gap-1.5 mb-4">
-                                                            {item.tags.slice(0, 3).map((tag, index) => (
-                                                                <span
-                                                                    key={index}
-                                                                    className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-2.5 py-1 rounded-full text-xs font-medium"
-                                                                >
-                                                                    {tag}
-                                                                </span>
-                                                            ))}
-                                                            {item.tags.length > 3 && (
-                                                                <span className="text-emerald-400/60 text-xs px-2 py-1 font-medium">
-                                                                    +{item.tags.length - 3}
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                    )}
-                                                </div>
-
-                                                {/* Footer */}
-                                                <div className="px-6 py-3 bg-emerald-500/5 border-t border-emerald-500/10 flex items-center justify-between text-xs">
-                                                    <span className="text-gray-400">{createdAt.toLocaleDateString()}</span>
-                                                    <span className="bg-emerald-500/20 text-emerald-300 px-2 py-1 rounded-full font-medium">
-                                                        Document
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        );
-
                                         // Reddit Card Component
                                         const RedditCard = ({ item }: { item: ContentItem }) => (
-                                            <div className="bg-gradient-to-br from-orange-900/20 to-orange-800/20 backdrop-blur-sm border border-orange-500/30 rounded-xl hover:border-orange-400/50 transition-all duration-300 group cursor-pointer p-6">
+                                            <div
+                                                className="bg-gradient-to-br from-orange-900/20 to-orange-800/20 backdrop-blur-sm border border-orange-500/30 rounded-xl hover:border-orange-400/50 transition-all duration-300 group cursor-pointer p-6"
+                                                onClick={() => handleOpenContent(item)}
+                                            >
                                                 {/* Header with action menu */}
                                                 <div className="flex items-center justify-between mb-4">
                                                     <div className="flex items-center space-x-3">
@@ -848,7 +741,10 @@ export default function Space() {
 
                                         // Image Card Component
                                         const ImageCard = ({ item }: { item: ContentItem }) => (
-                                            <div className="bg-gradient-to-br from-purple-900/20 to-purple-800/20 backdrop-blur-sm border border-purple-500/30 rounded-xl hover:border-purple-400/50 transition-all duration-300 group cursor-pointer p-6">
+                                            <div
+                                                className="bg-gradient-to-br from-purple-900/20 to-purple-800/20 backdrop-blur-sm border border-purple-500/30 rounded-xl hover:border-purple-400/50 transition-all duration-300 group cursor-pointer p-6"
+                                                onClick={() => handleOpenContent(item)}
+                                            >
                                                 {/* Header with action menu */}
                                                 <div className="flex items-center justify-between mb-4">
                                                     <div className="flex items-center space-x-3">
@@ -911,7 +807,10 @@ export default function Space() {
 
                                         // Text/Note Card Component
                                         const TextCard = ({ item }: { item: ContentItem }) => (
-                                            <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl hover:border-indigo-400/50 hover:shadow-2xl hover:shadow-indigo-500/10 transition-all duration-300 group cursor-pointer overflow-hidden">
+                                            <div
+                                                className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl hover:border-indigo-400/50 hover:shadow-2xl hover:shadow-indigo-500/10 transition-all duration-300 group cursor-pointer overflow-hidden"
+                                                onClick={() => handleOpenContent(item)}
+                                            >
                                                 {/* Header */}
                                                 <div className="p-6 pb-4">
                                                     <div className="flex items-start justify-between mb-4">
@@ -977,6 +876,7 @@ export default function Space() {
                                             <div
                                                 className={`bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl hover:border-purple-400/50 hover:shadow-2xl hover:shadow-purple-500/10 transition-all duration-300 group cursor-pointer overflow-hidden ${viewMode === 'grid' ? '' : 'flex items-center'
                                                     }`}
+                                                onClick={() => handleOpenContent(item)}
                                             >
                                                 {viewMode === 'grid' ? (
                                                     <>
@@ -1122,12 +1022,8 @@ export default function Space() {
                                         // Render the appropriate card type
                                         return (
                                             <div key={item.id}>
-                                                {item.type === 'tweet' ? (
-                                                    <XCard item={item} />
-                                                ) : item.type === 'youtube' ? (
+                                                {item.type === 'youtube' ? (
                                                     <YouTubeCard item={item} />
-                                                ) : item.type === 'document' ? (
-                                                    <DocumentCard item={item} />
                                                 ) : item.type === 'reddit' ? (
                                                     <RedditCard item={item} />
                                                 ) : item.type === 'image' ? (

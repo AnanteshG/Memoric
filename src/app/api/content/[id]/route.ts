@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { db } from '@/lib/firebase';
-import { collection, query, where, getDocs, deleteDoc } from 'firebase/firestore';
+import { doc, getDoc, deleteDoc } from 'firebase/firestore';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,31 +17,33 @@ export async function DELETE(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const contentId = params.id;
+    const resolvedParams = await params;
+    const contentId = resolvedParams.id;
 
     if (!contentId) {
       return NextResponse.json({ error: 'Content ID is required' }, { status: 400 });
     }
 
-    // Find the content document to delete
-    const contentRef = collection(db, 'content');
-    const q = query(
-      contentRef,
-      where('contentId', '==', contentId),
-      where('userId', '==', userId)
-    );
+    // Get the document directly by ID
+    const contentDocRef = doc(db, 'content', contentId);
+    const contentDoc = await getDoc(contentDocRef);
     
-    const snapshot = await getDocs(q);
-    
-    if (snapshot.empty) {
+    if (!contentDoc.exists()) {
       return NextResponse.json({ 
-        error: "Content not found or you don't have permission to delete it" 
+        error: "Content not found" 
       }, { status: 404 });
     }
 
+    // Check if the user owns this content
+    const contentData = contentDoc.data();
+    if (contentData.userId !== userId) {
+      return NextResponse.json({ 
+        error: "You don't have permission to delete this content" 
+      }, { status: 403 });
+    }
+
     // Delete the document
-    const docToDelete = snapshot.docs[0];
-    await deleteDoc(docToDelete.ref);
+    await deleteDoc(contentDocRef);
     
     return NextResponse.json({ 
       success: true, 

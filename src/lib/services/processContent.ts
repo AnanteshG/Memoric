@@ -1,7 +1,6 @@
 // src/lib/services/processContent.ts
 import { extractXContent } from './extractXContent';
 import { extractYouTubeContent } from './extractYouTubeContent';
-import { extractPdfText } from './extractPdfText';
 import { analyzeImage } from './analyzeImage';
 import { analyzeText } from './analyzeText';
 import { extractRedditPost } from './extractRedditPost';
@@ -27,8 +26,6 @@ export async function processContent(
         return await processXContent(data);
       case 'youtube':
         return await processYouTubeContent(data);
-      case 'document':
-        return await processPdfContent(data);
       case 'image':
         return await processImageContent(data);
       case 'text':
@@ -97,35 +94,6 @@ async function processYouTubeContent(data: { url: string }): Promise<ProcessedCo
       thumbnail: youtubeData.thumbnail,
       description: youtubeData.description,
       transcript: youtubeData.transcript
-    },
-    searchableText
-  };
-}
-
-async function processPdfContent(data: { file: File }): Promise<ProcessedContent> {
-  const pdfData = await extractPdfText(data.file);
-  
-  const searchableText = [
-    data.file.name,
-    pdfData.text,
-    pdfData.summary,
-    pdfData.documentType,
-    ...pdfData.keyTopics,
-    ...pdfData.tags
-  ].join(' ');
-  
-  return {
-    title: data.file.name.replace('.pdf', ''),
-    content: pdfData.text,
-    summary: pdfData.summary,
-    tags: pdfData.tags,
-    thumbnail: pdfData.thumbnailUrl,
-    metadata: {
-      type: 'document',
-      documentType: pdfData.documentType,
-      keyTopics: pdfData.keyTopics,
-      fileName: data.file.name,
-      fileSize: data.file.size
     },
     searchableText
   };

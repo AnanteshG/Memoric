@@ -1,5 +1,6 @@
 // src/app/api/external/x/route.ts
 import { NextRequest, NextResponse } from 'next/server';
+import { fetchTweetTextWithRetry } from '@/lib/services/fetchTweet';
 
 export async function POST(req: NextRequest) {
   try {
@@ -9,43 +10,55 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'URL is required' }, { status: 400 });
     }
 
-    // Extract post ID from URL
-    const postIdMatch = url.match(/status\/(\d+)/);
-    if (!postIdMatch) {
-      return NextResponse.json({ error: 'Invalid X URL' }, { status: 400 });
+    // Validate URL format
+    const urlPattern = /(?:twitter\.com|x\.com)\/\w+\/status\/(\d+)/;
+    if (!urlPattern.test(url)) {
+      return NextResponse.json({ error: 'Invalid X/Twitter URL format' }, { status: 400 });
     }
 
-    const postId = postIdMatch[1];
+    console.log('📱 Fetching X post data for URL:', url);
 
-    // For now, we'll return mock data as X API requires authentication
-    // In production, you would use X API v2 with Bearer token
-    const mockPostData = {
-      id: postId,
-      text: "This is a sample X post content. Replace this with actual X API integration.",
-      author: {
-        name: "Sample User",
-        username: "sampleuser",
-        profile_image_url: "https://via.placeholder.com/48"
-      },
-      created_at: new Date().toISOString(),
-      public_metrics: {
-        repost_count: 10,
-        like_count: 25,
-        reply_count: 5
-      },
-      entities: {
-        hashtags: [{ tag: "example" }],
-        urls: []
-      }
-    };
+    // Fetch tweet data using our service
+    const tweetData = await fetchTweetTextWithRetry(url);
+    
+    if (!tweetData) {
+      console.error('❌ Failed to fetch tweet data');
+      return NextResponse.json({ error: 'Failed to fetch tweet data' }, { status: 500 });
+    }
 
+    console.log('✅ Successfully fetched tweet data:', tweetData.id);
+
+    // Return the structured tweet data
     return NextResponse.json({
       success: true,
-      data: mockPostData,
+      data: {
+        id: tweetData.id,
+        text: tweetData.text,
+        author: {
+          name: tweetData.username,
+          username: tweetData.handle,
+          profile_image_url: `https://unavatar.io/twitter/${tweetData.handle}`
+        },
+        created_at: tweetData.timestamp,
+        public_metrics: {
+          repost_count: tweetData.metrics.retweets,
+          like_count: tweetData.metrics.likes,
+          reply_count: tweetData.metrics.replies,
+          view_count: tweetData.metrics.views || 0
+        },
+        entities: {
+          hashtags: [],
+          urls: [{ expanded_url: tweetData.url }]
+        },
+        attachments: {
+          media_keys: tweetData.images || []
+        }
+      },
       metadata: {
         platform: 'x',
-        type: 'x',
-        url: url
+        type: 'tweet',
+        url: url,
+        originalUrl: tweetData.url
       }
     });
 
@@ -57,19 +70,3 @@ export async function POST(req: NextRequest) {
     );
   }
 }
-
-/* 
-To integrate with real X API v2:
-
-1. Get Bearer token from X Developer Portal
-2. Add to environment variables: X_BEARER_TOKEN
-3. Replace mock data with actual API call:
-
-const response = await fetch(`https://api.x.com/2/tweets/${postId}?tweet.fields=created_at,author_id,public_metrics,entities&user.fields=name,username,profile_image_url&expansions=author_id`, {
-  headers: {
-    'Authorization': `Bearer ${process.env.X_BEARER_TOKEN}`,
-  },
-});
-
-const data = await response.json();
-*/
