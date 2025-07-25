@@ -7,7 +7,7 @@ import { collection, addDoc, query, where, orderBy, limit, getDocs, doc, getDoc,
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
 // Initialize Gemini AI
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
+const genAI = new GoogleGenerativeAI(process.env.NEXT_PUBLIC_GEMINI_API_KEY || '');
 
 // Get chat history for a user
 async function getChatHistory(userId: string, contentId: string | null, chatLimit: number = 5) {
@@ -47,45 +47,274 @@ async function getChatHistory(userId: string, contentId: string | null, chatLimi
 // Save chat turn
 async function saveChatTurn(userId: string, contentId: string | null, message: string, response: string) {
   const chatsRef = collection(db, 'chats');
-  await addDoc(chatsRef, {
+  const chatData: any = {
     userId,
-    contentId: contentId || undefined,
     message,
     response,
     createdAt: new Date().toISOString(),
-  });
+  };
+  
+  // Only add contentId if it's not null
+  if (contentId) {
+    chatData.contentId = contentId;
+  }
+  
+  await addDoc(chatsRef, chatData);
 }
 
 // Search user's content for relevant information
 async function searchUserContent(userId: string, searchQuery: string) {
+  console.log('🔍 Searching content for userId:', userId, 'query:', searchQuery);
+  
   const contentRef = collection(db, 'content');
-  const q = query(
-    contentRef,
-    where('userId', '==', userId),
-    orderBy('timestamp', 'desc')
-  );
   
-  const snapshot = await getDocs(q);
-  const allContent = snapshot.docs.map(doc => doc.data());
+  let snapshot;
+  try {
+    // Try with ordering first
+    const q = query(
+      contentRef,
+      where('userId', '==', userId),
+      orderBy('timestamp', 'desc')
+    );
+    snapshot = await getDocs(q);
+  } catch (error) {
+    console.warn('⚠️ Ordered query failed, trying without ordering:', error);
+    // Fallback to simple query without ordering
+    const q = query(
+      contentRef,
+      where('userId', '==', userId)
+    );
+    snapshot = await getDocs(q);
+  }
   
-  // Simple text-based search (in production, you'd use vector similarity)
+  const allContent = snapshot.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data()
+  }));
+  
+  console.log('📚 Total content found:', allContent.length);
+  console.log('📄 Sample content structure:', allContent.length > 0 ? Object.keys(allContent[0]) : 'No content');
+  
+  // Debug: Log the actual content of first few items
+  if (allContent.length > 0) {
+    allContent.slice(0, 2).forEach((item: any, index: number) => {
+      console.log(`📋 Content ${index + 1}:`, {
+        title: item.title,
+        type: item.type,
+        contentLength: item.content?.length || 0,
+        contentPreview: item.content?.substring(0, 100) || 'No content',
+        summaryLength: item.summary?.length || 0,
+        summaryPreview: item.summary?.substring(0, 100) || 'No summary',
+        processedContentLength: item.processedContent?.length || 0,
+        hasExternalData: !!item.externalData,
+        hasMetadata: !!item.metadata
+      });
+    });
+  }
+  
+  if (allContent.length === 0) {
+    console.log('❌ No content found for user');
+    return [];
+  }
+
+  // Enhanced search using all possible content fields
   const queryLower = searchQuery.toLowerCase();
-  const relevantContent = allContent.filter((item: any) => 
-    item.title?.toLowerCase().includes(queryLower) ||
-    item.content?.toLowerCase().includes(queryLower) ||
-    item.summary?.toLowerCase().includes(queryLower) ||
-    item.processedContent?.toLowerCase().includes(queryLower) ||
-    item.tags?.some((tag: string) => tag.toLowerCase().includes(queryLower))
-  );
+  const queryTerms = queryLower.split(' ').filter(term => term.length > 2); // Filter out very short terms
   
-  return relevantContent.slice(0, 5); // Return top 5 matches
+  console.log('🔍 Search terms:', queryTerms);
+  
+  const relevantContent = allContent.filter((item: any) => {
+    // Get all possible text fields to search through
+    const title = item.title?.toLowerCase() || '';
+    const content = item.content?.toLowerCase() || '';
+    const processedContent = item.processedContent?.toLowerCase() || '';
+    const summary = item.summary?.toLowerCase() || '';
+    const tags = Array.isArray(item.tags) ? item.tags.join(' ').toLowerCase() : '';
+    
+    // Metadata fields
+    const extractedText = item.metadata?.extractedText?.toLowerCase() || '';
+    const transcript = item.metadata?.transcript?.toLowerCase() || '';
+    
+    // External data fields
+    const externalDescription = item.externalData?.description?.toLowerCase() || '';
+    const externalTitle = item.externalData?.title?.toLowerCase() || '';
+    const externalContent = item.externalData?.content?.toLowerCase() || '';
+    
+    // Original link and other fields
+    const originalLink = item.originalLink?.toLowerCase() || '';
+    const author = item.author?.toLowerCase() || '';
+    
+    // Legacy fields (in case they exist)
+    const searchableText = item.searchableText?.toLowerCase() || '';
+    
+    // Combine all searchable text
+    const allText = [
+      title, content, processedContent, summary, tags,
+      extractedText, transcript, externalDescription, externalTitle,
+      externalContent, originalLink, author, searchableText,
+      // Enhanced search fields
+      item.enhancedSearchableText?.toLowerCase() || '',
+      Array.isArray(item.searchKeywords) ? item.searchKeywords.join(' ').toLowerCase() : '',
+      Array.isArray(item.metadata?.concepts) ? item.metadata.concepts.join(' ').toLowerCase() : '',
+      item.enhancedContent?.toLowerCase() || ''
+    ].join(' ');
+    
+    // Log what we're searching through for debugging
+    console.log('🔍 Checking item:', {
+      title: item.title,
+      contentLength: content.length,
+      summaryLength: summary.length,
+      processedContentLength: processedContent.length,
+      allTextLength: allText.length,
+      type: item.type,
+      // Show actual content preview for debugging
+      contentPreview: content.substring(0, 200) + (content.length > 200 ? '...' : ''),
+      summaryPreview: summary.substring(0, 100) + (summary.length > 100 ? '...' : ''),
+    });
+    
+    // Search using multiple strategies:
+    // 1. Direct term matching
+    let hasDirectMatch = false;
+    for (const term of queryTerms) {
+      if (allText.includes(term)) {
+        hasDirectMatch = true;
+        console.log(`✅ Direct match found for term "${term}" in item: ${item.title}`);
+        break;
+      }
+    }
+    
+    // 2. Partial word matching (for cases like "anantesh" might be "Anantesh G" in the content)
+    let hasPartialMatch = false;
+    for (const term of queryTerms) {
+      if (term.length > 3) { // Only for longer terms
+        const words = allText.split(/\s+/);
+        for (const word of words) {
+          if (word.includes(term) || term.includes(word.substring(0, Math.min(word.length, term.length)))) {
+            hasPartialMatch = true;
+            console.log(`✅ Partial match found for term "${term}" with word "${word}" in item: ${item.title}`);
+            break;
+          }
+        }
+        if (hasPartialMatch) break;
+      }
+    }
+    
+    // 3. Fuzzy matching for names and important terms
+    let hasFuzzyMatch = false;
+    if (queryLower.includes('anantesh') || queryLower.includes('project')) {
+      // Look for variations
+      if (allText.includes('anantesh') || allText.includes('projects') || 
+          allText.includes('project') || allText.includes('built') || 
+          allText.includes('developed') || allText.includes('created')) {
+        hasFuzzyMatch = true;
+        console.log(`✅ Fuzzy match found in item: ${item.title}`);
+      }
+    }
+    
+    // 4. Special handling for document types (PDFs, resumes, etc.)
+    let hasDocumentMatch = false;
+    if (item.type === 'document') {
+      // If it's a resume/CV and query mentions projects, include it
+      if ((queryLower.includes('project') || queryLower.includes('work') || queryLower.includes('experience')) && 
+          (title.includes('resume') || title.includes('cv'))) {
+        hasDocumentMatch = true;
+        console.log(`✅ Document type match found for resume/CV: ${item.title}`);
+      }
+      
+      // If query mentions a name and document title contains it
+      if (queryLower.includes('anantesh') && title.includes('anantesh')) {
+        hasDocumentMatch = true;
+        console.log(`✅ Document name match found: ${item.title}`);
+      }
+    }
+    
+    const matches = hasDirectMatch || hasPartialMatch || hasFuzzyMatch || hasDocumentMatch;
+    
+    if (matches) {
+      console.log('✅ Overall match found in item:', item.title || item.id);
+    } else {
+      console.log('❌ No match found in item:', item.title || item.id);
+    }
+    
+    return matches;
+  });
+  
+  console.log('🎯 Relevant content found:', relevantContent.length);
+  
+  // Score and sort results by relevance
+  const scoredContent = relevantContent.map((item: any) => {
+    let score = 0;
+    const searchTerms = queryTerms; // Use the filtered terms
+    
+    // Combine all text for scoring
+    const allText = [
+      item.title?.toLowerCase() || '',
+      item.content?.toLowerCase() || '',
+      item.processedContent?.toLowerCase() || '',
+      item.summary?.toLowerCase() || '',
+      Array.isArray(item.tags) ? item.tags.join(' ').toLowerCase() : '',
+      item.metadata?.extractedText?.toLowerCase() || '',
+      item.metadata?.transcript?.toLowerCase() || '',
+      item.externalData?.description?.toLowerCase() || '',
+      item.externalData?.title?.toLowerCase() || '',
+      item.externalData?.content?.toLowerCase() || '',
+      item.originalLink?.toLowerCase() || '',
+      item.author?.toLowerCase() || '',
+      item.searchableText?.toLowerCase() || ''
+    ].join(' ');
+    
+    searchTerms.forEach(term => {
+      // Higher score for title matches
+      if (item.title?.toLowerCase().includes(term)) score += 5;
+      if (item.externalData?.title?.toLowerCase().includes(term)) score += 5;
+      
+      // High score for exact matches in main content
+      if (item.content?.toLowerCase().includes(term)) score += 4;
+      if (item.processedContent?.toLowerCase().includes(term)) score += 4;
+      if (item.summary?.toLowerCase().includes(term)) score += 4;
+      
+      // Medium score for other content
+      if (item.externalData?.description?.toLowerCase().includes(term)) score += 3;
+      if (item.externalData?.content?.toLowerCase().includes(term)) score += 3;
+      if (item.metadata?.extractedText?.toLowerCase().includes(term)) score += 3;
+      if (item.metadata?.transcript?.toLowerCase().includes(term)) score += 3;
+      
+      // Lower score for tag and metadata matches
+      if (item.tags?.some((tag: string) => tag.toLowerCase().includes(term))) score += 2;
+      if (item.author?.toLowerCase().includes(term)) score += 2;
+      
+      // Bonus score for specific important terms
+      if (term === 'anantesh' && allText.includes('anantesh')) score += 3;
+      if ((term === 'project' || term === 'projects') && (allText.includes('project') || allText.includes('built') || allText.includes('developed'))) score += 3;
+    });
+    
+    // Bonus for resume/CV documents when asking about projects
+    if (queryLower.includes('project') && (item.title?.toLowerCase().includes('resume') || item.title?.toLowerCase().includes('cv'))) {
+      score += 5;
+    }
+    
+    return { ...item, relevanceScore: score };
+  });
+  
+  // Sort by relevance score and return top results
+  const sortedContent = scoredContent
+    .sort((a, b) => b.relevanceScore - a.relevanceScore)
+    .slice(0, 10); // Increase to top 10 matches
+  
+  console.log('🏆 Top scored content:', sortedContent.map(item => ({ title: item.title, score: item.relevanceScore })));
+  
+  return sortedContent;
 }
 
 export async function POST(req: NextRequest) {
+  console.log('🔥 Chat API called');
   try {
+    console.log('🔐 Attempting auth...');
     const { userId } = await auth();
+    console.log('✅ Auth result:', { userId });
     
     if (!userId) {
+      console.log('❌ No userId found');
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -104,10 +333,12 @@ export async function POST(req: NextRequest) {
     }
 
     // Search user's content for relevant information
+    console.log('🔍 Starting content search...');
     const relevantContent = await searchUserContent(userId, message);
+    console.log('📊 Search completed. Found', relevantContent.length, 'relevant items');
 
     // Generate answer using Gemini with user's content as context
-    const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
     
     // Build context from user's content
     let contextText = '';
@@ -115,12 +346,66 @@ export async function POST(req: NextRequest) {
       contextText = '\n\nRelevant information from your knowledge base:\n';
       relevantContent.forEach((item: any, index: number) => {
         contextText += `\n${index + 1}. ${item.title || 'Untitled'}\n`;
-        contextText += `   Type: ${item.type}\n`;
-        contextText += `   Content: ${item.summary || item.content || 'No content'}\n`;
-        if (item.tags && item.tags.length > 0) {
+        contextText += `   Type: ${item.type || 'Unknown'}\n`;
+        
+        // Include comprehensive content from all possible fields
+        if (item.summary) {
+          contextText += `   Summary: ${item.summary}\n`;
+        }
+        
+        // For documents (PDFs), prioritize the extracted content
+        if (item.type === 'document' && item.content) {
+          // Use more content for documents since they're likely to be important
+          contextText += `   Document Content: ${item.content.substring(0, 2000)}${item.content.length > 2000 ? '...' : ''}\n`;
+        } else if (item.content) {
+          contextText += `   Content: ${item.content.substring(0, 800)}${item.content.length > 800 ? '...' : ''}\n`;
+        }
+        
+        if (item.processedContent && item.processedContent !== item.content) {
+          contextText += `   Processed Content: ${item.processedContent.substring(0, 800)}${item.processedContent.length > 800 ? '...' : ''}\n`;
+        }
+        
+        // External data content
+        if (item.externalData?.description) {
+          contextText += `   Description: ${item.externalData.description.substring(0, 500)}${item.externalData.description.length > 500 ? '...' : ''}\n`;
+        }
+        if (item.externalData?.content) {
+          contextText += `   External Content: ${item.externalData.content.substring(0, 500)}${item.externalData.content.length > 500 ? '...' : ''}\n`;
+        }
+        
+        // Metadata content
+        if (item.metadata?.extractedText) {
+          contextText += `   Extracted Text: ${item.metadata.extractedText.substring(0, 500)}${item.metadata.extractedText.length > 500 ? '...' : ''}\n`;
+        }
+        if (item.metadata?.transcript) {
+          contextText += `   Transcript: ${item.metadata.transcript.substring(0, 500)}${item.metadata.transcript.length > 500 ? '...' : ''}\n`;
+        }
+        
+        // Document-specific metadata
+        if (item.metadata?.documentType) {
+          contextText += `   Document Type: ${item.metadata.documentType}\n`;
+        }
+        if (item.metadata?.keyTopics && Array.isArray(item.metadata.keyTopics)) {
+          contextText += `   Key Topics: ${item.metadata.keyTopics.join(', ')}\n`;
+        }
+        
+        // Additional metadata
+        if (item.tags && Array.isArray(item.tags) && item.tags.length > 0) {
           contextText += `   Tags: ${item.tags.join(', ')}\n`;
         }
+        if (item.author) {
+          contextText += `   Author: ${item.author}\n`;
+        }
+        if (item.originalLink) {
+          contextText += `   Source URL: ${item.originalLink}\n`;
+        }
+        if (item.platform) {
+          contextText += `   Platform: ${item.platform}\n`;
+        }
+        contextText += '\n';
       });
+    } else {
+      console.log('❌ No relevant content found for query:', message);
     }
 
     // Build chat history context
@@ -140,9 +425,22 @@ export async function POST(req: NextRequest) {
     ${contextText}
     ${historyText}
     
-    Please provide a helpful, accurate response based on the user's stored content. If you reference information from their knowledge base, mention which source you're drawing from. If no relevant information is found in their knowledge base, let them know and provide general guidance.
+    Instructions:
+    1. ALWAYS check the provided knowledge base content above for relevant information
+    2. If you find relevant information in the knowledge base, use it to answer the question and cite the specific sources
+    3. If no relevant information is found in the knowledge base, clearly state this and explain what you found instead
+    4. Be specific about which documents or sources you're referencing
+    5. Provide helpful and accurate responses based on the available information
+    
+    ${relevantContent.length === 0 ? 
+      'Note: No relevant documents were found in the knowledge base for this query. Please let the user know this and provide general guidance instead.' : 
+      `Note: You have access to ${relevantContent.length} relevant document(s) from the user's knowledge base. Use this information to provide a comprehensive answer.`
+    }
     
     Keep your response conversational and helpful.`;
+
+    console.log('🤖 Sending prompt to Gemini with context length:', contextText.length);
+    console.log('📝 Context preview:', contextText.substring(0, 200) + '...');
 
     const result = await model.generateContent(prompt);
     const response = await result.response;

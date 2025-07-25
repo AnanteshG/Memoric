@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { DotPattern } from '@/components/ui/dot-pattern';
 import UploadModal from '@/components/pages/UploadModal';
+import PdfPreview from '@/components/ui/PdfPreview';
 import { useState, useCallback, useEffect } from 'react';
 import {
     Upload,
@@ -19,9 +20,6 @@ import {
     List,
     Filter,
     Plus,
-    ChevronDown,
-    Settings,
-    LogOut,
     Zap,
     Clock,
     Star,
@@ -32,7 +30,13 @@ import {
     RefreshCw,
     Trash2,
     Heart,
-    Twitter,
+    X,
+    MoreHorizontal,
+    ExternalLink,
+    Edit3,
+    Repeat2,
+    BarChart3,
+    CheckCircle,
 } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
@@ -57,6 +61,19 @@ interface ContentItem {
         comments: number;
         score: number;
     };
+    // X (formerly Twitter) specific data
+    tweetData?: {
+        username: string;
+        handle: string;
+        verified: boolean;
+        profileImage: string;
+        tweetText: string;
+        timestamp: string;
+        replies: number;
+        retweets: number;
+        likes: number;
+        views?: number;
+    };
 }
 
 export default function Space() {
@@ -65,7 +82,6 @@ export default function Space() {
     const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
     const [showUploadModal, setShowUploadModal] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
-    const [showUserMenu, setShowUserMenu] = useState(false);
     const [contentItems, setContentItems] = useState<ContentItem[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isRefreshing, setIsRefreshing] = useState(false);
@@ -124,10 +140,32 @@ export default function Space() {
         fetchUserStats(); // Refresh stats
     }, [fetchContent, fetchUserStats]);
 
+    // Handle delete content
+    const handleDeleteContent = useCallback(async (itemId: string) => {
+        try {
+            const response = await fetch(`/api/content/${itemId}`, {
+                method: 'DELETE',
+            });
+
+            if (response.ok) {
+                // Remove item from local state immediately for instant feedback
+                setContentItems(prev => prev.filter(item => item.id !== itemId));
+                // Refresh stats to reflect the change
+                fetchUserStats();
+            } else {
+                console.error('Failed to delete content');
+                // You might want to show a toast notification here
+            }
+        } catch (error) {
+            console.error('Error deleting content:', error);
+            // You might want to show an error toast notification here
+        }
+    }, [fetchUserStats]);
+
     const categories = [
         { id: 'all', name: 'All Content', icon: Grid, count: contentItems.length },
         { id: 'document', name: 'Documents', icon: FileText, count: contentItems.filter(item => item.type === 'document').length },
-        { id: 'tweet', name: 'Tweets', icon: MessageSquare, count: contentItems.filter(item => item.type === 'tweet').length },
+        { id: 'tweet', name: 'X Posts', icon: MessageSquare, count: contentItems.filter(item => item.type === 'tweet').length },
         { id: 'reddit', name: 'Reddit', icon: Globe, count: contentItems.filter(item => item.type === 'reddit').length },
         { id: 'youtube', name: 'YouTube', icon: Youtube, count: contentItems.filter(item => item.type === 'youtube').length },
         { id: 'image', name: 'Images', icon: ImageIcon, count: contentItems.filter(item => item.type === 'image').length },
@@ -136,7 +174,7 @@ export default function Space() {
 
     const uploadOptions = [
         { id: 'document', name: 'Upload Document', icon: FileText, description: 'PDF, DOCX, TXT files', color: 'from-blue-500 to-cyan-500' },
-        { id: 'tweet', name: 'Save Tweet', icon: MessageSquare, description: 'Twitter URLs or screenshots', color: 'from-sky-500 to-blue-500' },
+        { id: 'tweet', name: 'Save X Post', icon: MessageSquare, description: 'X URLs or screenshots', color: 'from-sky-500 to-blue-500' },
         { id: 'reddit', name: 'Save Reddit Post', icon: Globe, description: 'Reddit post URLs', color: 'from-orange-500 to-red-500' },
         { id: 'youtube', name: 'Save YouTube Video', icon: Youtube, description: 'YouTube video URLs', color: 'from-red-500 to-pink-500' },
         { id: 'image', name: 'Upload Image', icon: ImageIcon, description: 'JPG, PNG, GIF files', color: 'from-green-500 to-emerald-500' },
@@ -404,141 +442,700 @@ export default function Space() {
                                         const TypeIcon = getTypeIcon(item.type);
                                         const createdAt = new Date(item.createdAt);
 
-                                        return (
-                                            <div
-                                                key={item.id}
-                                                className={`bg-gray-900/50 backdrop-blur-sm border border-gray-700/50 rounded-xl hover:border-purple-500/30 transition-all duration-300 group cursor-pointer ${viewMode === 'grid' ? 'p-6' : 'p-4 flex items-center space-x-4'
-                                                    }`}
-                                            >
-                                                {viewMode === 'grid' ? (
-                                                    <>
-                                                        <div className="flex items-center justify-between mb-4">
-                                                            <div className={`p-2 rounded-lg bg-gradient-to-br from-gray-800 to-gray-900 ${getTypeColor(item.type)}`}>
-                                                                <TypeIcon size={20} />
+                                        // Card Action Menu Component
+                                        const CardActionMenu = ({ item }: { item: ContentItem }) => {
+                                            const [showMenu, setShowMenu] = useState(false);
+
+                                            return (
+                                                <div className="relative">
+                                                    <button
+                                                        onClick={() => setShowMenu(!showMenu)}
+                                                        className="p-1.5 text-gray-400 hover:text-white rounded-lg hover:bg-white/10 transition-all duration-200"
+                                                    >
+                                                        <MoreHorizontal size={16} />
+                                                    </button>
+                                                    {showMenu && (
+                                                        <div className="absolute right-0 top-8 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-50 min-w-[120px]">
+                                                            <button
+                                                                onClick={() => {
+                                                                    if (item.url) window.open(item.url, '_blank');
+                                                                    setShowMenu(false);
+                                                                }}
+                                                                className="flex items-center space-x-2 w-full px-3 py-2 text-sm text-gray-300 hover:text-white hover:bg-gray-700 transition-colors duration-200"
+                                                            >
+                                                                <ExternalLink size={14} />
+                                                                <span>Open</span>
+                                                            </button>
+                                                            <button
+                                                                onClick={() => {
+                                                                    // TODO: Implement edit functionality
+                                                                    setShowMenu(false);
+                                                                }}
+                                                                className="flex items-center space-x-2 w-full px-3 py-2 text-sm text-gray-300 hover:text-white hover:bg-gray-700 transition-colors duration-200"
+                                                            >
+                                                                <Edit3 size={14} />
+                                                                <span>Edit</span>
+                                                            </button>
+                                                            <button
+                                                                onClick={async () => {
+                                                                    setShowMenu(false);
+                                                                    if (confirm('Are you sure you want to delete this content?')) {
+                                                                        await handleDeleteContent(item.id);
+                                                                    }
+                                                                }}
+                                                                className="flex items-center space-x-2 w-full px-3 py-2 text-sm text-red-400 hover:text-red-300 hover:bg-red-900/20 transition-colors duration-200"
+                                                            >
+                                                                <Trash2 size={14} />
+                                                                <span>Delete</span>
+                                                            </button>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        };
+
+                                        // X Card Component
+                                        const XCard = ({ item }: { item: ContentItem }) => (
+                                            <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl hover:border-blue-400/50 hover:shadow-2xl hover:shadow-blue-500/10 transition-all duration-300 group cursor-pointer overflow-hidden">
+                                                {/* Header */}
+                                                <div className="p-6 pb-4">
+                                                    <div className="flex items-start justify-between mb-4">
+                                                        <div className="flex items-center space-x-3">
+                                                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-sky-600 flex items-center justify-center flex-shrink-0">
+                                                                <X size={16} className="text-white" />
                                                             </div>
-                                                            <div className="flex items-center space-x-2">
-                                                                <button className="p-2 text-gray-400 hover:text-white rounded-lg hover:bg-white/10 transition-all duration-200">
-                                                                    <Eye size={16} />
-                                                                </button>
-                                                                <button className="p-2 text-gray-400 hover:text-white rounded-lg hover:bg-white/10 transition-all duration-200">
-                                                                    <Share size={16} />
-                                                                </button>
+                                                            <div className="min-w-0 flex-1">
+                                                                <h3 className="text-white font-medium text-sm truncate">
+                                                                    {item.tweetData?.username || item.author || 'X Post'}
+                                                                </h3>
+                                                                <p className="text-blue-300 text-xs">
+                                                                    @{item.tweetData?.handle || 'x_user'}
+                                                                </p>
                                                             </div>
                                                         </div>
+                                                        <CardActionMenu item={item} />
+                                                    </div>
 
-                                                        {item.thumbnail && (
-                                                            <div className="w-full h-32 bg-gray-800 rounded-lg mb-4 overflow-hidden">
-                                                                <Image
-                                                                    src={item.thumbnail}
-                                                                    alt={item.title}
-                                                                    width={400}
-                                                                    height={200}
-                                                                    className="w-full h-full object-cover"
-                                                                />
-                                                            </div>
-                                                        )}
-
-                                                        <h3 className="text-white font-semibold mb-2 line-clamp-2">
-                                                            {item.title}
-                                                        </h3>
-
-                                                        {/* Platform and Author Info */}
-                                                        {(item.platform || item.author) && (
-                                                            <div className="flex items-center space-x-2 mb-2">
-                                                                {item.platform && (
-                                                                    <span className="bg-blue-600/20 text-blue-300 px-2 py-1 rounded-full text-xs font-medium">
-                                                                        {item.platform}
-                                                                    </span>
-                                                                )}
-                                                                {item.author && (
-                                                                    <span className="text-gray-400 text-xs">
-                                                                        by {item.author}
-                                                                    </span>
-                                                                )}
-                                                            </div>
-                                                        )}
-
-                                                        <p className="text-gray-400 text-sm mb-4 line-clamp-3">
-                                                            {item.summary || item.content}
+                                                    {/* Post Content */}
+                                                    <div className="mb-4">
+                                                        <p className="text-gray-200 text-sm leading-relaxed line-clamp-4">
+                                                            {item.tweetData?.tweetText || item.content}
                                                         </p>
+                                                    </div>
 
-                                                        {/* External Data Metrics */}
-                                                        {item.metrics && (item.metrics.likes > 0 || item.metrics.views > 0 || item.metrics.comments > 0) && (
-                                                            <div className="flex items-center space-x-4 mb-3 text-xs text-gray-500">
-                                                                {item.metrics.views > 0 && (
+                                                    {/* Post Image */}
+                                                    {item.thumbnail && (
+                                                        <div className="w-full h-44 bg-gray-800/50 rounded-xl mb-4 overflow-hidden">
+                                                            <Image
+                                                                src={item.thumbnail}
+                                                                alt="Post image"
+                                                                width={400}
+                                                                height={200}
+                                                                className="w-full h-full object-cover"
+                                                            />
+                                                        </div>
+                                                    )}
+
+                                                    {/* Metrics */}
+                                                    {((item.tweetData?.likes || item.metrics?.likes || 0) > 0 ||
+                                                        (item.tweetData?.replies || item.metrics?.comments || 0) > 0 ||
+                                                        (item.tweetData?.retweets || 0) > 0) && (
+                                                            <div className="flex items-center space-x-4 mb-4 text-xs text-blue-300/80">
+                                                                {(item.tweetData?.likes || item.metrics?.likes || 0) > 0 && (
                                                                     <div className="flex items-center space-x-1">
-                                                                        <Eye size={12} />
-                                                                        <span>{item.metrics.views.toLocaleString()}</span>
+                                                                        <Heart size={12} className="text-pink-400" />
+                                                                        <span>{(item.tweetData?.likes || item.metrics?.likes || 0).toLocaleString()}</span>
                                                                     </div>
                                                                 )}
-                                                                {item.metrics.likes > 0 && (
-                                                                    <div className="flex items-center space-x-1">
-                                                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" className="text-red-400">
-                                                                            <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" fill="currentColor" />
-                                                                        </svg>
-                                                                        <span>{item.metrics.likes.toLocaleString()}</span>
-                                                                    </div>
-                                                                )}
-                                                                {item.metrics.comments > 0 && (
+                                                                {(item.tweetData?.replies || item.metrics?.comments || 0) > 0 && (
                                                                     <div className="flex items-center space-x-1">
                                                                         <MessageSquare size={12} />
-                                                                        <span>{item.metrics.comments.toLocaleString()}</span>
+                                                                        <span>{(item.tweetData?.replies || item.metrics?.comments || 0).toLocaleString()}</span>
                                                                     </div>
                                                                 )}
-                                                                {item.metrics.score > 0 && (
+                                                                {(item.tweetData?.retweets || 0) > 0 && (
                                                                     <div className="flex items-center space-x-1">
-                                                                        <Star size={12} />
-                                                                        <span>{item.metrics.score}</span>
+                                                                        <Repeat2 size={12} />
+                                                                        <span>{item.tweetData?.retweets?.toLocaleString()}</span>
                                                                     </div>
                                                                 )}
                                                             </div>
                                                         )}
 
-                                                        <div className="flex flex-wrap gap-2 mb-4">
-                                                            {(item.tags || []).map((tag, index) => (
+                                                    {/* Tags */}
+                                                    {item.tags && item.tags.length > 0 && (
+                                                        <div className="flex flex-wrap gap-1.5 mb-4">
+                                                            {item.tags.slice(0, 3).map((tag, index) => (
                                                                 <span
                                                                     key={index}
-                                                                    className="bg-purple-600/20 text-purple-300 px-2 py-1 rounded-full text-xs"
+                                                                    className="bg-blue-500/10 border border-blue-500/20 text-blue-400 px-2.5 py-1 rounded-full text-xs font-medium"
                                                                 >
                                                                     {tag}
                                                                 </span>
                                                             ))}
+                                                            {item.tags.length > 3 && (
+                                                                <span className="text-blue-400/60 text-xs px-2 py-1 font-medium">
+                                                                    +{item.tags.length - 3}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                {/* Footer */}
+                                                <div className="px-6 py-3 bg-blue-500/5 border-t border-blue-500/10 flex items-center justify-between text-xs">
+                                                    <span className="text-gray-400">{createdAt.toLocaleDateString()}</span>
+                                                    <span className="bg-blue-500/20 text-blue-300 px-2 py-1 rounded-full font-medium">
+                                                        X Post
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        );
+
+                                        // YouTube Card Component
+                                        const YouTubeCard = ({ item }: { item: ContentItem }) => (
+                                            <div className="bg-gradient-to-br from-red-900/20 to-red-800/20 backdrop-blur-sm border border-red-500/30 rounded-xl hover:border-red-400/50 transition-all duration-300 group cursor-pointer p-6">
+                                                {/* Header with action menu */}
+                                                <div className="flex items-center justify-between mb-4">
+                                                    <div className="flex items-center space-x-3">
+                                                        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-red-600 to-red-700 flex items-center justify-center">
+                                                            <Youtube size={20} className="text-white" />
+                                                        </div>
+                                                        <div>
+                                                            <h3 className="text-white font-semibold text-sm line-clamp-1">
+                                                                {item.title}
+                                                            </h3>
+                                                            <p className="text-red-300 text-xs">
+                                                                {item.author || 'YouTube'} • Video
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                    <CardActionMenu item={item} />
+                                                </div>
+
+                                                {/* Video thumbnail */}
+                                                {item.thumbnail && (
+                                                    <div className="relative w-full h-40 bg-gray-800 rounded-lg mb-4 overflow-hidden group">
+                                                        <Image
+                                                            src={item.thumbnail}
+                                                            alt="Video thumbnail"
+                                                            width={400}
+                                                            height={200}
+                                                            className="w-full h-full object-cover"
+                                                        />
+                                                        {/* Play button overlay */}
+                                                        <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                                                            <div className="w-12 h-12 bg-red-600 rounded-full flex items-center justify-center">
+                                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="white">
+                                                                    <path d="M8 5v14l11-7z" />
+                                                                </svg>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                {/* Video description preview */}
+                                                <div className="mb-4">
+                                                    <p className="text-white text-sm leading-relaxed line-clamp-3">
+                                                        {item.content}
+                                                    </p>
+                                                </div>
+
+                                                {/* Video metrics */}
+                                                {item.metrics && (
+                                                    <div className="flex items-center space-x-4 mb-4 text-xs text-red-300">
+                                                        {item.metrics.views > 0 && (
+                                                            <div className="flex items-center space-x-1">
+                                                                <Eye size={12} />
+                                                                <span>{item.metrics.views.toLocaleString()} views</span>
+                                                            </div>
+                                                        )}
+                                                        {item.metrics.likes > 0 && (
+                                                            <div className="flex items-center space-x-1">
+                                                                <Heart size={12} className="text-red-400" />
+                                                                <span>{item.metrics.likes.toLocaleString()}</span>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+
+                                                {/* Tags */}
+                                                {item.tags && item.tags.length > 0 && (
+                                                    <div className="flex flex-wrap gap-1 mb-4">
+                                                        {item.tags.slice(0, 4).map((tag, index) => (
+                                                            <span
+                                                                key={index}
+                                                                className="bg-red-600/20 text-red-300 px-2 py-1 rounded-full text-xs"
+                                                            >
+                                                                #{tag}
+                                                            </span>
+                                                        ))}
+                                                        {item.tags.length > 4 && (
+                                                            <span className="text-red-400 text-xs px-2 py-1">
+                                                                +{item.tags.length - 4} more
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                )}
+
+                                                {/* Footer */}
+                                                <div className="flex items-center justify-between text-xs text-gray-400">
+                                                    <span>{createdAt.toLocaleDateString()}</span>
+                                                    <span className="bg-red-600/20 text-red-300 px-2 py-1 rounded-full">
+                                                        YouTube
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        );
+
+                                        // Document/PDF Card Component
+                                        const DocumentCard = ({ item }: { item: ContentItem }) => (
+                                            <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl hover:border-emerald-400/50 hover:shadow-2xl hover:shadow-emerald-500/10 transition-all duration-300 group cursor-pointer overflow-hidden">
+                                                {/* Header */}
+                                                <div className="p-6 pb-4">
+                                                    <div className="flex items-start justify-between mb-4">
+                                                        <div className="flex items-center space-x-3">
+                                                            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-green-600 flex items-center justify-center flex-shrink-0">
+                                                                <FileText size={16} className="text-white" />
+                                                            </div>
+                                                            <div className="min-w-0 flex-1">
+                                                                <h3 className="text-white font-medium text-sm line-clamp-2 leading-5">
+                                                                    {item.title}
+                                                                </h3>
+                                                                <p className="text-emerald-300 text-xs mt-1">
+                                                                    {item.size || 'PDF Document'}
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                        <CardActionMenu item={item} />
+                                                    </div>
+
+                                                    {/* PDF Preview */}
+                                                    {item.type === 'document' ? (
+                                                        <div className="mb-4">
+                                                            <PdfPreview
+                                                                url={item.url || ''}
+                                                                title={item.title}
+                                                                onClick={() => window.open(item.url, '_blank')}
+                                                            />
+                                                        </div>
+                                                    ) : (
+                                                        <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-xl p-4 mb-4">
+                                                            <div className="flex items-center space-x-2 mb-3">
+                                                                <Eye size={14} className="text-emerald-400" />
+                                                                <span className="text-emerald-300 text-xs font-medium">Document Preview</span>
+                                                            </div>
+                                                            <div className="text-gray-200 text-sm leading-relaxed">
+                                                                <div className="line-clamp-6">
+                                                                    {item.content.length > 300
+                                                                        ? `${item.content.substring(0, 300)}...`
+                                                                        : item.content
+                                                                    }
+                                                                </div>
+                                                            </div>
+                                                            {item.content.length > 300 && (
+                                                                <div className="mt-2 text-emerald-400 text-xs font-medium">
+                                                                    Click to read more
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
+
+                                                    {/* Tags */}
+                                                    {item.tags && item.tags.length > 0 && (
+                                                        <div className="flex flex-wrap gap-1.5 mb-4">
+                                                            {item.tags.slice(0, 3).map((tag, index) => (
+                                                                <span
+                                                                    key={index}
+                                                                    className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-2.5 py-1 rounded-full text-xs font-medium"
+                                                                >
+                                                                    {tag}
+                                                                </span>
+                                                            ))}
+                                                            {item.tags.length > 3 && (
+                                                                <span className="text-emerald-400/60 text-xs px-2 py-1 font-medium">
+                                                                    +{item.tags.length - 3}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                {/* Footer */}
+                                                <div className="px-6 py-3 bg-emerald-500/5 border-t border-emerald-500/10 flex items-center justify-between text-xs">
+                                                    <span className="text-gray-400">{createdAt.toLocaleDateString()}</span>
+                                                    <span className="bg-emerald-500/20 text-emerald-300 px-2 py-1 rounded-full font-medium">
+                                                        Document
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        );
+
+                                        // Reddit Card Component
+                                        const RedditCard = ({ item }: { item: ContentItem }) => (
+                                            <div className="bg-gradient-to-br from-orange-900/20 to-orange-800/20 backdrop-blur-sm border border-orange-500/30 rounded-xl hover:border-orange-400/50 transition-all duration-300 group cursor-pointer p-6">
+                                                {/* Header with action menu */}
+                                                <div className="flex items-center justify-between mb-4">
+                                                    <div className="flex items-center space-x-3">
+                                                        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-600 to-orange-700 flex items-center justify-center">
+                                                            <Globe size={20} className="text-white" />
+                                                        </div>
+                                                        <div>
+                                                            <h3 className="text-white font-semibold text-sm line-clamp-2">
+                                                                {item.title}
+                                                            </h3>
+                                                            <p className="text-orange-300 text-xs">
+                                                                {item.author || 'Reddit'} • r/{item.platform || 'reddit'}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                    <CardActionMenu item={item} />
+                                                </div>
+
+                                                {/* Reddit post content */}
+                                                <div className="mb-4">
+                                                    <p className="text-white text-sm leading-relaxed line-clamp-4">
+                                                        {item.content}
+                                                    </p>
+                                                </div>
+
+                                                {/* Reddit metrics */}
+                                                {item.metrics && (
+                                                    <div className="flex items-center space-x-4 mb-4 text-xs text-orange-300">
+                                                        {item.metrics.score > 0 && (
+                                                            <div className="flex items-center space-x-1">
+                                                                <BarChart3 size={12} />
+                                                                <span>{item.metrics.score} upvotes</span>
+                                                            </div>
+                                                        )}
+                                                        {item.metrics.comments > 0 && (
+                                                            <div className="flex items-center space-x-1">
+                                                                <MessageSquare size={12} />
+                                                                <span>{item.metrics.comments} comments</span>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+
+                                                {/* Tags */}
+                                                {item.tags && item.tags.length > 0 && (
+                                                    <div className="flex flex-wrap gap-1 mb-4">
+                                                        {item.tags.slice(0, 4).map((tag, index) => (
+                                                            <span
+                                                                key={index}
+                                                                className="bg-orange-600/20 text-orange-300 px-2 py-1 rounded-full text-xs"
+                                                            >
+                                                                #{tag}
+                                                            </span>
+                                                        ))}
+                                                        {item.tags.length > 4 && (
+                                                            <span className="text-orange-400 text-xs px-2 py-1">
+                                                                +{item.tags.length - 4} more
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                )}
+
+                                                {/* Footer */}
+                                                <div className="flex items-center justify-between text-xs text-gray-400">
+                                                    <span>{createdAt.toLocaleDateString()}</span>
+                                                    <span className="bg-orange-600/20 text-orange-300 px-2 py-1 rounded-full">
+                                                        Reddit
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        );
+
+                                        // Image Card Component
+                                        const ImageCard = ({ item }: { item: ContentItem }) => (
+                                            <div className="bg-gradient-to-br from-purple-900/20 to-purple-800/20 backdrop-blur-sm border border-purple-500/30 rounded-xl hover:border-purple-400/50 transition-all duration-300 group cursor-pointer p-6">
+                                                {/* Header with action menu */}
+                                                <div className="flex items-center justify-between mb-4">
+                                                    <div className="flex items-center space-x-3">
+                                                        <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-purple-600 to-purple-700 flex items-center justify-center">
+                                                            <ImageIcon size={20} className="text-white" />
+                                                        </div>
+                                                        <div>
+                                                            <h3 className="text-white font-semibold text-sm line-clamp-1">
+                                                                {item.title}
+                                                            </h3>
+                                                            <p className="text-purple-300 text-xs">
+                                                                Image • {item.size || 'Unknown size'}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                    <CardActionMenu item={item} />
+                                                </div>
+
+                                                {/* Image preview */}
+                                                {item.thumbnail && (
+                                                    <div className="w-full h-48 bg-gray-800 rounded-lg mb-4 overflow-hidden">
+                                                        <Image
+                                                            src={item.thumbnail}
+                                                            alt="Image preview"
+                                                            width={400}
+                                                            height={300}
+                                                            className="w-full h-full object-cover"
+                                                        />
+                                                    </div>
+                                                )}
+
+                                                {/* Tags */}
+                                                {item.tags && item.tags.length > 0 && (
+                                                    <div className="flex flex-wrap gap-1 mb-4">
+                                                        {item.tags.slice(0, 4).map((tag, index) => (
+                                                            <span
+                                                                key={index}
+                                                                className="bg-purple-600/20 text-purple-300 px-2 py-1 rounded-full text-xs"
+                                                            >
+                                                                #{tag}
+                                                            </span>
+                                                        ))}
+                                                        {item.tags.length > 4 && (
+                                                            <span className="text-purple-400 text-xs px-2 py-1">
+                                                                +{item.tags.length - 4} more
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                )}
+
+                                                {/* Footer */}
+                                                <div className="flex items-center justify-between text-xs text-gray-400">
+                                                    <span>{createdAt.toLocaleDateString()}</span>
+                                                    <span className="bg-purple-600/20 text-purple-300 px-2 py-1 rounded-full">
+                                                        Image
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        );
+
+                                        // Text/Note Card Component
+                                        const TextCard = ({ item }: { item: ContentItem }) => (
+                                            <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl hover:border-indigo-400/50 hover:shadow-2xl hover:shadow-indigo-500/10 transition-all duration-300 group cursor-pointer overflow-hidden">
+                                                {/* Header */}
+                                                <div className="p-6 pb-4">
+                                                    <div className="flex items-start justify-between mb-4">
+                                                        <div className="flex items-center space-x-3">
+                                                            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center flex-shrink-0">
+                                                                <FileText size={16} className="text-white" />
+                                                            </div>
+                                                            <div className="min-w-0 flex-1">
+                                                                <h3 className="text-white font-medium text-sm line-clamp-1">
+                                                                    {item.title}
+                                                                </h3>
+                                                                <p className="text-indigo-300 text-xs mt-1">
+                                                                    {item.content.length} characters
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                        <CardActionMenu item={item} />
+                                                    </div>
+
+                                                    {/* Text Content Preview */}
+                                                    <div className="bg-indigo-500/5 border border-indigo-500/20 rounded-xl p-4 mb-4">
+                                                        <div className="flex items-center space-x-2 mb-3">
+                                                            <MessageSquare size={14} className="text-indigo-400" />
+                                                            <span className="text-indigo-300 text-xs font-medium">Note Content</span>
+                                                        </div>
+                                                        <div className="text-gray-200 text-sm leading-relaxed line-clamp-6">
+                                                            {item.content}
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Tags */}
+                                                    {item.tags && item.tags.length > 0 && (
+                                                        <div className="flex flex-wrap gap-1.5 mb-4">
+                                                            {item.tags.slice(0, 3).map((tag, index) => (
+                                                                <span
+                                                                    key={index}
+                                                                    className="bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 px-2.5 py-1 rounded-full text-xs font-medium"
+                                                                >
+                                                                    {tag}
+                                                                </span>
+                                                            ))}
+                                                            {item.tags.length > 3 && (
+                                                                <span className="text-indigo-400/60 text-xs px-2 py-1 font-medium">
+                                                                    +{item.tags.length - 3}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                {/* Footer */}
+                                                <div className="px-6 py-3 bg-indigo-500/5 border-t border-indigo-500/10 flex items-center justify-between text-xs">
+                                                    <span className="text-gray-400">{createdAt.toLocaleDateString()}</span>
+                                                    <span className="bg-indigo-500/20 text-indigo-300 px-2 py-1 rounded-full font-medium">
+                                                        Text Note
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        );
+
+                                        // Default Card Component
+                                        const DefaultCard = ({ item }: { item: ContentItem }) => (
+                                            <div
+                                                className={`bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl hover:border-purple-400/50 hover:shadow-2xl hover:shadow-purple-500/10 transition-all duration-300 group cursor-pointer overflow-hidden ${viewMode === 'grid' ? '' : 'flex items-center'
+                                                    }`}
+                                            >
+                                                {viewMode === 'grid' ? (
+                                                    <>
+                                                        {/* Header */}
+                                                        <div className="p-6 pb-4">
+                                                            <div className="flex items-start justify-between mb-4">
+                                                                <div className="flex items-center space-x-3">
+                                                                    <div className={`w-10 h-10 rounded-xl bg-gradient-to-br from-gray-700 to-gray-800 flex items-center justify-center flex-shrink-0 ${getTypeColor(item.type)}`}>
+                                                                        <TypeIcon size={16} />
+                                                                    </div>
+                                                                    <div className="min-w-0 flex-1">
+                                                                        <h3 className="text-white font-medium text-sm line-clamp-2 leading-5">
+                                                                            {item.title}
+                                                                        </h3>
+                                                                        <div className="flex items-center space-x-2 mt-1">
+                                                                            {item.platform && (
+                                                                                <span className="bg-purple-500/20 text-purple-300 px-1.5 py-0.5 rounded text-xs font-medium">
+                                                                                    {item.platform}
+                                                                                </span>
+                                                                            )}
+                                                                            {item.author && (
+                                                                                <span className="text-gray-400 text-xs">
+                                                                                    {item.author}
+                                                                                </span>
+                                                                            )}
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                                <CardActionMenu item={item} />
+                                                            </div>
+
+                                                            {/* Thumbnail */}
+                                                            {item.thumbnail && (
+                                                                <div className="w-full h-40 bg-gray-800/50 rounded-xl mb-4 overflow-hidden">
+                                                                    <Image
+                                                                        src={item.thumbnail}
+                                                                        alt={item.title}
+                                                                        width={400}
+                                                                        height={200}
+                                                                        className="w-full h-full object-cover"
+                                                                    />
+                                                                </div>
+                                                            )}
+
+                                                            {/* Content Preview */}
+                                                            <div className="bg-gray-500/5 border border-gray-500/20 rounded-xl p-4 mb-4">
+                                                                <div className="flex items-center space-x-2 mb-3">
+                                                                    <Eye size={14} className="text-gray-400" />
+                                                                    <span className="text-gray-300 text-xs font-medium">Content Preview</span>
+                                                                </div>
+                                                                <div className="text-gray-200 text-sm leading-relaxed line-clamp-4">
+                                                                    {item.content.length > 200
+                                                                        ? `${item.content.substring(0, 200)}...`
+                                                                        : item.content
+                                                                    }
+                                                                </div>
+                                                            </div>
+
+                                                            {/* External Data Metrics */}
+                                                            {item.metrics && (item.metrics.likes > 0 || item.metrics.views > 0 || item.metrics.comments > 0) && (
+                                                                <div className="flex items-center space-x-4 mb-4 text-xs text-gray-400">
+                                                                    {item.metrics.views > 0 && (
+                                                                        <div className="flex items-center space-x-1">
+                                                                            <Eye size={12} />
+                                                                            <span>{item.metrics.views.toLocaleString()}</span>
+                                                                        </div>
+                                                                    )}
+                                                                    {item.metrics.likes > 0 && (
+                                                                        <div className="flex items-center space-x-1">
+                                                                            <Heart size={12} className="text-pink-400" />
+                                                                            <span>{item.metrics.likes.toLocaleString()}</span>
+                                                                        </div>
+                                                                    )}
+                                                                    {item.metrics.comments > 0 && (
+                                                                        <div className="flex items-center space-x-1">
+                                                                            <MessageSquare size={12} />
+                                                                            <span>{item.metrics.comments.toLocaleString()}</span>
+                                                                        </div>
+                                                                    )}
+                                                                    {item.metrics.score > 0 && (
+                                                                        <div className="flex items-center space-x-1">
+                                                                            <Star size={12} />
+                                                                            <span>{item.metrics.score}</span>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            )}
+
+                                                            {/* Tags */}
+                                                            {(item.tags || []).length > 0 && (
+                                                                <div className="flex flex-wrap gap-1.5 mb-4">
+                                                                    {(item.tags || []).slice(0, 3).map((tag, index) => (
+                                                                        <span
+                                                                            key={index}
+                                                                            className="bg-purple-500/10 border border-purple-500/20 text-purple-400 px-2.5 py-1 rounded-full text-xs font-medium"
+                                                                        >
+                                                                            {tag}
+                                                                        </span>
+                                                                    ))}
+                                                                    {(item.tags || []).length > 3 && (
+                                                                        <span className="text-purple-400/60 text-xs px-2 py-1 font-medium">
+                                                                            +{(item.tags || []).length - 3}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                            )}
                                                         </div>
 
-                                                        <div className="flex items-center justify-between text-xs text-gray-500">
-                                                            <span>{createdAt.toLocaleDateString()}</span>
-                                                            {item.size && <span>{item.size}</span>}
+                                                        {/* Footer */}
+                                                        <div className="px-6 py-3 bg-gray-500/5 border-t border-gray-500/10 flex items-center justify-between text-xs">
+                                                            <span className="text-gray-400">{createdAt.toLocaleDateString()}</span>
+                                                            {item.size && <span className="text-gray-400">{item.size}</span>}
                                                         </div>
                                                     </>
                                                 ) : (
                                                     <>
-                                                        <div className={`p-3 rounded-lg ${getTypeColor(item.type)}`}>
-                                                            <TypeIcon size={24} />
-                                                        </div>
-                                                        <div className="flex-1">
-                                                            <h3 className="text-white font-semibold mb-1">{item.title}</h3>
-                                                            <p className="text-gray-400 text-sm mb-2 line-clamp-1">{item.summary || item.content}</p>
-                                                            <div className="flex items-center space-x-4 text-xs text-gray-500">
-                                                                <span>{createdAt.toLocaleDateString()}</span>
-                                                                {item.size && <span>{item.size}</span>}
-                                                                <div className="flex space-x-1">
-                                                                    {(item.tags || []).slice(0, 3).map((tag, index) => (
-                                                                        <span key={index} className="bg-purple-600/20 text-purple-300 px-2 py-1 rounded-full">
-                                                                            {tag}
-                                                                        </span>
-                                                                    ))}
+                                                        <div className="p-4 flex items-center space-x-4 w-full">
+                                                            <div className={`p-3 rounded-xl ${getTypeColor(item.type)} bg-gray-700/50`}>
+                                                                <TypeIcon size={24} />
+                                                            </div>
+                                                            <div className="flex-1 min-w-0">
+                                                                <h3 className="text-white font-medium mb-1 line-clamp-1">{item.title}</h3>
+                                                                <p className="text-gray-400 text-sm mb-2 line-clamp-1">{item.content}</p>
+                                                                <div className="flex items-center space-x-4 text-xs text-gray-500">
+                                                                    <span>{createdAt.toLocaleDateString()}</span>
+                                                                    {item.size && <span>{item.size}</span>}
+                                                                    <div className="flex space-x-1">
+                                                                        {(item.tags || []).slice(0, 2).map((tag, index) => (
+                                                                            <span key={index} className="bg-purple-600/20 text-purple-300 px-2 py-1 rounded-full">
+                                                                                {tag}
+                                                                            </span>
+                                                                        ))}
+                                                                    </div>
                                                                 </div>
                                                             </div>
-                                                        </div>
-                                                        <div className="flex items-center space-x-2">
-                                                            <button className="p-2 text-gray-400 hover:text-white rounded-lg hover:bg-white/10 transition-all duration-200">
-                                                                <Eye size={16} />
-                                                            </button>
-                                                            <button className="p-2 text-gray-400 hover:text-white rounded-lg hover:bg-white/10 transition-all duration-200">
-                                                                <Share size={16} />
-                                                            </button>
+                                                            <CardActionMenu item={item} />
                                                         </div>
                                                     </>
+                                                )}
+                                            </div>
+                                        );
+
+                                        // Render the appropriate card type
+                                        return (
+                                            <div key={item.id}>
+                                                {item.type === 'tweet' ? (
+                                                    <XCard item={item} />
+                                                ) : item.type === 'youtube' ? (
+                                                    <YouTubeCard item={item} />
+                                                ) : item.type === 'document' ? (
+                                                    <DocumentCard item={item} />
+                                                ) : item.type === 'reddit' ? (
+                                                    <RedditCard item={item} />
+                                                ) : item.type === 'image' ? (
+                                                    <ImageCard item={item} />
+                                                ) : item.type === 'text' ? (
+                                                    <TextCard item={item} />
+                                                ) : (
+                                                    <DefaultCard item={item} />
                                                 )}
                                             </div>
                                         );

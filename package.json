@@ -11,6 +11,9 @@
   "dependencies": {
     "@clerk/nextjs": "^5.0.0",
     "@google/generative-ai": "^0.24.1",
+    "@react-pdf-viewer/core": "^3.12.0",
+    "@react-pdf-viewer/default-layout": "^3.12.0",
+    "@react-pdf-viewer/thumbnail": "^3.12.0",
     "@types/canvas-confetti": "^1.9.0",
     "@types/uuid": "^10.0.0",
     "canvas-confetti": "^1.9.3",
@@ -23,6 +26,7 @@
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "react-hot-toast": "^2.5.2",
+    "sharp": "^0.34.3",
     "tailwind-merge": "^3.3.1",
     "uuid": "^11.1.0",
     "zod": "^3.25.76"
@@ -32,6 +36,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/react-pdf": "^6.2.0",
     "autoprefixer": "^10.4.21",
     "eslint": "^9",
     "eslint-config-next": "15.4.3",

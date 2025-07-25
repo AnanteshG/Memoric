@@ -18,7 +18,8 @@ import {
     CheckCircle,
     Clock,
     Users,
-    Target
+    Target,
+    Library
 } from 'lucide-react';
 
 export default function HowItWorks() {
@@ -159,8 +160,10 @@ export default function HowItWorks() {
                             onClick={() => router.push('/space')}
                             className="bg-white/10 backdrop-blur-lg border border-white/20 text-white px-3 py-2 sm:px-6 lg:px-8 sm:py-2.5 rounded-xl sm:rounded-2xl lg:rounded-3xl text-sm sm:text-base font-medium hover:bg-white/20 hover:border-white/30 transition-all duration-300 transform hover:scale-105 cursor-pointer shadow-lg shadow-white/5"
                         >
-                            <span className="font-medium hidden sm:inline">My Space</span>
-                            <span className="font-medium sm:hidden">Space</span>
+                            <div className="flex items-center justify-center">
+                                <span className="font-medium hidden sm:inline">My Space</span>
+                                <span className="font-medium sm:hidden">Space</span>
+                            </div>
                         </button>
                         <div className="bg-white/10 backdrop-blur-md border border-white/20 rounded-xl sm:rounded-2xl p-1">
                             <UserButton />

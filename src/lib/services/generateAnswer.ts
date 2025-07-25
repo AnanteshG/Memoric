@@ -33,29 +33,36 @@ export async function generateAnswer(
   // Use stored context if available; otherwise, it will fallback to general knowledge.
   let relevantContent = "";
   if (userMemories && userMemories.length > 0) {
-    relevantContent = userMemories[0]?.metadata?.text || "";
+    // Build context from multiple content pieces
+    relevantContent = userMemories.map((memory: any) => {
+      const title = memory.title || '';
+      const content = memory.content || memory.metadata?.text || '';
+      const summary = memory.summary || '';
+      const type = memory.type || memory.metadata?.type || '';
+      
+      return `[${type.toUpperCase()}] ${title}\n${summary || content.slice(0, 300)}...`;
+    }).join('\n\n');
   }
 
   const prompt = `
-You are an AI assistant. Answer the following question based on the given context if relevant, otherwise provide an answer using your own general knowledge.
-- Answer the user's question based on the chat history and provided context. Use context if it's relevant, otherwise use your own knowledge. Do not mention you're using context or history.
+You are an AI assistant with access to the user's personal knowledge base. Answer the user's question using the most relevant information from their stored content when applicable.
+
 Instructions:
-- Use the provided context if it is relevant.
-- If the context is insufficient or missing, answer using your general knowledge.
-- Do not mention whether you're using stored context or not.
-- Keep your answer short and clear.
-- Avoid phrases like "Based on the context provided".
+- If the stored information is relevant to the question, use it to provide a comprehensive answer
+- If no relevant stored information is available, provide an answer using your general knowledge
+- Be conversational and helpful
+- Don't mention that you're using stored information unless it adds value
+- Cite specific content types when relevant (e.g., "from your YouTube video about...", "in your document...", "from your note about...")
 
 User's Question: "${query}"
 
-Chat History:
-${historyText || "[No previous chat history]"}
+${historyText ? `Previous Conversation:
+${historyText}
 
-Stored Information:
-${relevantContent || "[No relevant stored information available]"}
+` : ''}${relevantContent ? `Relevant Information from Your Knowledge Base:
+${relevantContent}
 
-Current Question: "${query}"
-  `;
+` : ''}Please answer the user's question:`;
 
   console.log("Constructed prompt:", prompt);
 

@@ -25,7 +25,7 @@ export default function UploadModal({ type: initialType, isOpen, onClose, onSucc
         { id: 'text', label: 'Text Note', icon: FileText, description: 'Write notes and ideas' },
         { id: 'document', label: 'Document', icon: Upload, description: 'Upload PDF, DOCX, or TXT files' },
         { id: 'image', label: 'Image', icon: ImageIcon, description: 'Upload images with descriptions' },
-        { id: 'tweet', label: 'Tweet', icon: MessageSquare, description: 'Save Twitter posts or threads' },
+        { id: 'tweet', label: 'X Post', icon: MessageSquare, description: 'Save X posts or threads' },
         { id: 'reddit', label: 'Reddit Post', icon: Globe, description: 'Save Reddit posts and discussions' },
         { id: 'youtube', label: 'YouTube Video', icon: Youtube, description: 'Save videos for later reference' },
     ];
@@ -120,11 +120,11 @@ export default function UploadModal({ type: initialType, isOpen, onClose, onSucc
             case 'tweet':
                 return {
                     title: 'Save Tweet',
-                    description: 'Save Twitter posts or threads',
+                    description: 'Save X posts or threads',
                     placeholder: 'Paste tweet content or add notes...',
                     showFile: false,
                     showUrl: true,
-                    urlPlaceholder: 'https://twitter.com/...'
+                    urlPlaceholder: 'https://x.com/...'
                 };
             case 'reddit':
                 return {

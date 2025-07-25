@@ -1,12 +1,12 @@
 'use client';
 
-import { SignInButton, SignedIn, SignedOut, UserButton } from '@clerk/nextjs';
+import { SignInButton, SignedIn, SignedOut, UserButton, SignOutButton } from '@clerk/nextjs';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { DotPattern } from '@/components/ui/dot-pattern';
 import { ShineBorder } from '@/components/ui/shine-border';
 import { useState, useCallback, memo, useEffect, useRef } from 'react';
-import { ChevronDown, Settings, LogOut, Bot, MessageSquare, X, User, Loader } from 'lucide-react';
+import { ChevronDown, LogOut, Bot, MessageSquare, X, User, Loader, Library } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
 
@@ -47,14 +47,18 @@ const SearchInput = memo(() => {
         body: JSON.stringify({ message: prompt })
       });
 
-      if (!response.ok) throw new Error('Failed to get response');
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('API Error:', response.status, errorText);
+        throw new Error(`Failed to get response: ${response.status}`);
+      }
 
       const data = await response.json();
 
       const assistantMessage = {
         id: (Date.now() + 1).toString(),
         type: 'assistant' as const,
-        content: data.response,
+        content: data.answer, // Changed from data.response to data.answer
         timestamp: new Date().toISOString(),
         sources: data.sources || []
       };
@@ -370,37 +374,7 @@ export default function Home() {
               onClick={() => router.push('/space')}
               className="bg-gradient-to-r from-purple-600 to-pink-600 text-white border border-purple-400 px-4 py-2 sm:px-6 md:px-8 lg:px-12 sm:py-2.5 rounded-2xl sm:rounded-3xl text-sm sm:text-base font-medium shadow-lg hover:shadow-xl hover:from-purple-700 hover:to-pink-700 hover:border-purple-300 transition-all duration-300 transform hover:scale-105 cursor-pointer"
             >
-              <div className="flex items-center space-x-1 sm:space-x-2">
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="text-white sm:w-4 sm:h-4"
-                >
-                  <path
-                    d="M3 7V17C3 18.1046 3.89543 19 5 19H19C20.1046 19 21 18.1046 21 17V7C21 5.89543 20.1046 5 19 5H5C3.89543 5 3 5.89543 3 7Z"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                  <path
-                    d="M8 12H16"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                  <path
-                    d="M8 8H12"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
+              <div className="flex items-center justify-center">
                 <span className="font-medium hidden sm:inline">My Space</span>
                 <span className="font-medium sm:hidden">Space</span>
               </div>
@@ -418,27 +392,15 @@ export default function Home() {
               {showUserMenu && (
                 <div className="absolute right-0 mt-2 w-48 bg-gray-900/95 backdrop-blur-md border border-gray-700/50 rounded-xl shadow-lg z-50">
                   <div className="p-2">
-                    <button
-                      onClick={() => {
-                        setShowUserMenu(false);
-                        router.push('/space');
-                      }}
-                      className="w-full flex items-center space-x-2 px-3 py-2 text-gray-300 hover:text-white hover:bg-white/10 rounded-lg transition-all duration-200"
-                    >
-                      <Settings size={16} />
-                      <span>Dashboard</span>
-                    </button>
-                    <button
-                      onClick={() => {
-                        setShowUserMenu(false);
-                        // Clerk handles logout automatically
-                        window.location.href = '/';
-                      }}
-                      className="w-full flex items-center space-x-2 px-3 py-2 text-gray-300 hover:text-white hover:bg-white/10 rounded-lg transition-all duration-200"
-                    >
-                      <LogOut size={16} />
-                      <span>Log Out</span>
-                    </button>
+                    <SignOutButton>
+                      <button
+                        onClick={() => setShowUserMenu(false)}
+                        className="w-full flex items-center space-x-2 px-3 py-2 text-gray-300 hover:text-white hover:bg-white/10 rounded-lg transition-all duration-200"
+                      >
+                        <LogOut size={16} />
+                        <span>Log Out</span>
+                      </button>
+                    </SignOutButton>
                   </div>
                 </div>
               )}
@@ -473,9 +435,11 @@ export default function Home() {
           <SearchInput />
         </div>
 
-        <p className="text-gray-400 text-xs sm:text-sm mt-3 sm:mt-4 font-normal px-4">
-          Sign in to start building your personal knowledge base
-        </p>
+        <SignedOut>
+          <p className="text-gray-400 text-xs sm:text-sm mt-3 sm:mt-4 font-normal px-4">
+            Sign in to start building your personal knowledge base
+          </p>
+        </SignedOut>
       </div>
     </div>
   );

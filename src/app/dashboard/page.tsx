@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import {
     FileText,
-    Twitter,
+    X,
     Youtube,
     Link,
     MessageSquare,
@@ -23,7 +23,7 @@ export default function Dashboard() {
     const contentTypes = [
         { id: 'all', label: 'All Content', icon: FileText },
         { id: 'documents', label: 'Documents', icon: FileText },
-        { id: 'tweets', label: 'X Posts', icon: Twitter },
+        { id: 'tweets', label: 'X Posts', icon: X },
         { id: 'youtube', label: 'YouTube', icon: Youtube },
         { id: 'links', label: 'Web Links', icon: Link },
         { id: 'notes', label: 'Notes', icon: MessageSquare },
@@ -31,7 +31,7 @@ export default function Dashboard() {
 
     const addOptions = [
         { id: 'document', label: 'Upload Document', icon: FileText, color: 'bg-blue-500' },
-        { id: 'tweet', label: 'Add X Post', icon: Twitter, color: 'bg-blue-400' },
+        { id: 'tweet', label: 'Add X Post', icon: X, color: 'bg-blue-400' },
         { id: 'youtube', label: 'YouTube Link', icon: Youtube, color: 'bg-red-500' },
         { id: 'link', label: 'Web Link', icon: Link, color: 'bg-green-500' },
         { id: 'note', label: 'Add Note', icon: MessageSquare, color: 'bg-purple-500' },
@@ -50,7 +50,6 @@ export default function Dashboard() {
                             <div className="w-8 h-8 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg"></div>
                             <span className="text-xl font-bold">Memoric</span>
                         </button>
-                        <span className="text-gray-400">|</span>
                         <h1 className="text-xl font-semibold text-gray-900">My Space</h1>
                     </div>
 
@@ -72,8 +71,8 @@ export default function Dashboard() {
                                     key={type.id}
                                     onClick={() => setActiveTab(type.id)}
                                     className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-colors ${activeTab === type.id
-                                            ? 'bg-purple-50 text-purple-700 border border-purple-200'
-                                            : 'text-gray-600 hover:bg-gray-50'
+                                        ? 'bg-purple-50 text-purple-700 border border-purple-200'
+                                        : 'text-gray-600 hover:bg-gray-50'
                                         }`}
                                 >
                                     <Icon size={18} />

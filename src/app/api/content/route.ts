@@ -5,11 +5,12 @@ import { auth } from '@clerk/nextjs/server';
 import { db } from '@/lib/firebase';
 import { collection, addDoc, query, where, orderBy, getDocs, deleteDoc, doc, getDoc, setDoc } from 'firebase/firestore';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { processContent } from '@/lib/services/processContent';
 
 export const dynamic = 'force-dynamic';
 
 // Initialize Gemini AI
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
+const genAI = new GoogleGenerativeAI(process.env.NEXT_PUBLIC_GEMINI_API_KEY || '');
 
 // Get all content
 export async function GET(request: NextRequest) {
@@ -93,7 +94,7 @@ export async function POST(req: NextRequest) {
 
     const { content, type, url, title, metadata } = await req.json();
 
-    if (!type || !["note", "tweet", "document", "website", "image", "youtube", "reddit", "text"].includes(type)) {
+    if (!type || !["note", "tweet", "x", "document", "website", "image", "youtube", "reddit", "text"].includes(type)) {
       return NextResponse.json({ error: "Invalid type" }, { status: 400 });
     }
 
@@ -104,8 +105,8 @@ export async function POST(req: NextRequest) {
     // Fetch external data based on type and URL
     if (url) {
       try {
-        if (type === 'tweet' && url.includes('twitter.com')) {
-          const response = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/external/twitter`, {
+        if ((type === 'tweet' || type === 'x') && (url.includes('twitter.com') || url.includes('x.com'))) {
+          const response = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/external/x`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ url })
@@ -118,7 +119,7 @@ export async function POST(req: NextRequest) {
             // Generate AI title for tweet
             if (externalData.text && !finalTitle) {
               try {
-                const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
+                const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
                 const titlePrompt = `Generate a concise, descriptive title (max 60 characters) for this tweet content: "${externalData.text.substring(0, 200)}"
                 
                 Return only the title, no quotes or extra text.`;
@@ -183,7 +184,7 @@ export async function POST(req: NextRequest) {
       // Generate AI title if not already set
       if (!finalTitle && finalContent) {
         try {
-          const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
+          const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
           const titlePrompt = `Generate a concise, descriptive title (max 60 characters) for this tweet: "${finalContent.substring(0, 200)}"
           
           Return only the title, no quotes or extra text.`;
@@ -218,7 +219,7 @@ export async function POST(req: NextRequest) {
     let aiProcessedContent = finalContent;
 
     try {
-      const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
+      const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
       
       // Generate summary and tags using Gemini
       const analysisPrompt = `
@@ -289,7 +290,7 @@ export async function POST(req: NextRequest) {
       // Add specific fields for display
       thumbnail: externalData?.thumbnails?.medium?.url || externalData?.thumbnail || externalData?.preview || null,
       author: externalData?.author || externalData?.channelTitle || null,
-      platform: externalData ? (type === 'tweet' ? 'Twitter' : type === 'reddit' ? 'Reddit' : type === 'youtube' ? 'YouTube' : null) : null,
+      platform: externalData ? (type === 'tweet' || type === 'x' ? 'X' : type === 'reddit' ? 'Reddit' : type === 'youtube' ? 'YouTube' : null) : null,
       metrics: {
         likes: externalData?.like_count || externalData?.likeCount || 0,
         views: externalData?.viewCount || 0,
