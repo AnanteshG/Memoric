@@ -6,7 +6,7 @@ import { embedText } from '@/lib/embeddings';
 
 export const dynamic = 'force-dynamic';
 
-const genAI = new GoogleGenerativeAI(process.env.NEXT_PUBLIC_GEMINI_API_KEY || '');
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 
 type ChatTurn = { message: string; response: string };
 type Hit = {

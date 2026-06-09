@@ -1,6 +1,6 @@
 import { GoogleGenerativeAI, TaskType } from '@google/generative-ai';
 
-const genAI = new GoogleGenerativeAI(process.env.NEXT_PUBLIC_GEMINI_API_KEY || '');
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 
 // gemini-embedding-001 supports Matryoshka truncation; we request 768 dims to
 // match the vector(768) column. Cosine distance (pgvector <=>) is scale-
