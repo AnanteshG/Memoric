@@ -193,7 +193,7 @@ Content: ${finalContent}`;
       };
     }
 
-    // Semantic embedding for RAG retrieval (null if it fails — non-blocking).
+    // Semantic embedding for RAG retrieval (null if it fails, non-blocking).
     const embedding = await embedText(
       buildEmbeddingInput({ title: finalTitle, summary, tags, content: processedContent })
     );

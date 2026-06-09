@@ -1,0 +1,17 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- tile -->
+  <rect x="3" y="3" width="58" height="58" rx="14" fill="#FFD23F" stroke="#221D15" stroke-width="4"/>
+  <!-- brain: two lobes -->
+  <path d="M30 17c-4.5 0-7 2.8-7.4 5.6-3.2.6-5.6 3.2-5.6 6.6 0 1.9.8 3.6 2 4.9-.7 1.1-1 2.4-1 3.6 0 4 3.2 7.1 7.3 7.1 1 0 2-.2 2.9-.6 1 .8 2.3 1.3 3.8 1.3V17h-2z" fill="#FFFFFF" stroke="#221D15" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M34 17c4.5 0 7 2.8 7.4 5.6 3.2.6 5.6 3.2 5.6 6.6 0 1.9-.8 3.6-2 4.9.7 1.1 1 2.4 1 3.6 0 4-3.2 7.1-7.3 7.1-1 0-2-.2-2.9-.6-1 .8-2.3 1.3-3.8 1.3V17h2z" fill="#FFFFFF" stroke="#221D15" stroke-width="3" stroke-linejoin="round"/>
+  <!-- center split -->
+  <line x1="32" y1="18" x2="32" y2="45" stroke="#221D15" stroke-width="3" stroke-linecap="round"/>
+  <!-- folds -->
+  <path d="M25 26c2 .5 3.5 2 4 4" stroke="#221D15" stroke-width="2.4" stroke-linecap="round"/>
+  <path d="M39 26c-2 .5-3.5 2-4 4" stroke="#221D15" stroke-width="2.4" stroke-linecap="round"/>
+  <path d="M24.5 36c2.2 0 4 1.4 4.6 3.2" stroke="#221D15" stroke-width="2.4" stroke-linecap="round"/>
+  <path d="M39.5 36c-2.2 0-4 1.4-4.6 3.2" stroke="#221D15" stroke-width="2.4" stroke-linecap="round"/>
+  <!-- pushpin -->
+  <circle cx="46" cy="17" r="7.5" fill="#FF5D52" stroke="#221D15" stroke-width="3.5"/>
+  <circle cx="43.8" cy="14.8" r="2" fill="#FFFFFF" opacity="0.85"/>
+</svg>

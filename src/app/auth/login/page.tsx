@@ -2,6 +2,7 @@
 
 import { Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
+import Image from 'next/image';
 import { createClient } from '@/lib/supabase/client';
 
 function LoginContent() {
@@ -20,22 +21,25 @@ function LoginContent() {
   };
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-black px-4">
-      <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-white/5 p-8 text-center backdrop-blur">
-        <h1 className="text-2xl font-semibold text-white">Welcome to Memoric</h1>
-        <p className="mt-2 text-sm text-gray-400">
-          Sign in to access your knowledge base.
-        </p>
+    <main className="flex min-h-screen items-center justify-center px-4">
+      <div className="relative w-full max-w-sm rotate-[-1deg] border-[3px] border-ink bg-white p-8 text-center shadow-hard-lg pin">
+        <div className="mx-auto mb-4 w-fit border-2 border-ink bg-brand-yellow p-2 shadow-hard-sm">
+          <Image src="/assets/logo.svg" alt="Memoric" width={44} height={44} className="h-11 w-11 object-contain" />
+        </div>
+        <h1 className="text-3xl font-extrabold tracking-tight">
+          Memoric<span className="text-brand-coral">.</span>
+        </h1>
+        <p className="mt-1 font-hand text-2xl text-ink/60">welcome to your board!</p>
 
         {error && (
-          <p className="mt-4 rounded-md bg-red-500/10 px-3 py-2 text-sm text-red-400">
+          <p className="mt-4 border-2 border-ink bg-brand-coral px-3 py-2 text-sm font-bold text-white shadow-hard-sm">
             Sign-in failed. Please try again.
           </p>
         )}
 
         <button
           onClick={signInWithGoogle}
-          className="mt-6 flex w-full items-center justify-center gap-3 rounded-lg bg-white px-4 py-3 font-medium text-gray-900 transition hover:bg-gray-100"
+          className="mt-6 flex w-full items-center justify-center gap-3 border-[3px] border-ink bg-white px-4 py-3 font-extrabold shadow-hard transition hover:-translate-x-0.5 hover:-translate-y-0.5"
         >
           <svg className="h-5 w-5" viewBox="0 0 24 24">
             <path
@@ -57,6 +61,8 @@ function LoginContent() {
           </svg>
           Continue with Google
         </button>
+
+        <p className="mt-5 font-hand text-xl text-ink/40">pin first, organize never</p>
       </div>
     </main>
   );

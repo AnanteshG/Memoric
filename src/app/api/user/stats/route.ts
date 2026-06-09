@@ -41,7 +41,7 @@ export async function GET() {
   }
 }
 
-// Kept for API compatibility — stats are derived on demand, so this just
+// Kept for API compatibility, stats are derived on demand, so this just
 // returns the freshly computed values.
 export async function POST(_request: NextRequest) {
   try {

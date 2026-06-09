@@ -2,7 +2,7 @@ import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 
 // Routes that require an authenticated session.
-const PROTECTED_PREFIXES = ['/space', '/dashboard', '/add-content'];
+const PROTECTED_PREFIXES = ['/space'];
 
 // Refreshes the Supabase auth session on every request and guards protected
 // routes. Must run in middleware so the session cookie stays fresh.

@@ -1,19 +1,26 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Bricolage_Grotesque, Caveat } from "next/font/google";
 import { SupabaseAuthProvider } from '@/components/auth/supabase-auth';
 import "./globals.css";
 
 export const dynamic = 'force-dynamic';
 
-const inter = Inter({
+const display = Bricolage_Grotesque({
   subsets: ["latin"],
-  variable: "--font-inter",
+  variable: "--font-display",
+  display: "swap",
+});
+
+const hand = Caveat({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-hand",
   display: "swap",
 });
 
 export const metadata: Metadata = {
-  title: "Memoric - AI-Powered Personal Knowledge Base",
-  description: "Transform your digital content into a powerful queryable knowledge base with AI-powered insights.",
+  title: "Memoric | Save it. Ask it later.",
+  description: "Save links, tweets, videos and notes to a colorful pinboard, then chat with everything you have stored.",
 };
 
 export default async function RootLayout({
@@ -23,9 +30,7 @@ export default async function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body
-        className={`${inter.variable} font-sans antialiased`}
-      >
+      <body className={`${display.variable} ${hand.variable} antialiased`}>
         <SupabaseAuthProvider>{children}</SupabaseAuthProvider>
       </body>
     </html>

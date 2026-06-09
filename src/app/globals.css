@@ -1,138 +1,151 @@
-@import "tailwindcss/preflight";
-@import "tailwindcss/utilities";
-@import "tailwindcss/theme";
+@import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/* ------------------------------------------------------------------ */
+/* Design tokens — scrapbook / neo-brutalist                           */
+/* ------------------------------------------------------------------ */
+@theme {
+  /* Paper + ink */
+  --color-paper: #f6edda;
+  --color-paper-2: #eee0c2;
+  --color-ink: #221d15;
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
-body {
-  color: var(--foreground);
-  background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
-}
-
-@layer utilities {
-  .text-balance {
-    text-wrap: balance;
-  }
+  /* Bright accents */
+  --color-brand-yellow: #ffd23f;
+  --color-brand-coral: #ff5d52;
+  --color-brand-blue: #3d7bff;
+  --color-brand-green: #2fbf71;
+  --color-brand-pink: #ff8fc7;
+  --color-brand-purple: #9b6bff;
+  --color-brand-orange: #ff8a3d;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-inter);
+  --font-sans: var(--font-display), ui-sans-serif, system-ui, sans-serif;
+  --font-hand: var(--font-hand), cursive;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
+/* ------------------------------------------------------------------ */
+/* Base: cream paper with sand lines                                   */
+/* ------------------------------------------------------------------ */
 html,
 body {
-  @apply bg-white text-black dark:bg-neutral-950 dark:text-white font-sans;
+  color: var(--color-ink);
+  background-color: var(--color-paper);
+  /* "sand lines": fine horizontal ripples + a wider dune band, slightly offset */
+  background-image:
+    repeating-linear-gradient(
+      0deg,
+      transparent 0px,
+      transparent 30px,
+      rgba(34, 29, 21, 0.055) 30px,
+      rgba(34, 29, 21, 0.055) 31px
+    ),
+    repeating-linear-gradient(
+      -2deg,
+      transparent 0px,
+      transparent 119px,
+      rgba(201, 168, 110, 0.22) 119px,
+      rgba(201, 168, 110, 0.22) 124px
+    ),
+    radial-gradient(ellipse at 50% -20%, rgba(255, 210, 63, 0.18), transparent 60%);
+  font-family: var(--font-display), ui-sans-serif, system-ui, sans-serif;
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-}
+@layer utilities {
+  .font-hand {
+    font-family: var(--font-hand), cursive;
+  }
 
-@keyframes shiny-text {
-  0%,
-  90%,
-  100% {
-    background-position: calc(-100% - var(--shiny-width)) 0%;
+  /* Hard offset shadows */
+  .shadow-hard {
+    box-shadow: 4px 4px 0 0 var(--color-ink);
   }
-  30%,
-  60% {
-    background-position: calc(100% + var(--shiny-width)) 0%;
+  .shadow-hard-lg {
+    box-shadow: 7px 7px 0 0 var(--color-ink);
   }
-}
+  .shadow-hard-sm {
+    box-shadow: 2.5px 2.5px 0 0 var(--color-ink);
+  }
+  .hover-lift {
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+  }
+  .hover-lift:hover {
+    transform: translate(-2px, -2px) rotate(var(--rot, 0deg));
+    box-shadow: 7px 7px 0 0 var(--color-ink);
+  }
 
-.animate-shiny-text {
-  animation: shiny-text 8s ease-in-out infinite;
-}
+  /* Tape strip on top of a note */
+  .tape::before {
+    content: "";
+    position: absolute;
+    top: -11px;
+    left: 50%;
+    width: 70px;
+    height: 24px;
+    transform: translateX(-50%) rotate(-3deg);
+    background: rgba(255, 255, 255, 0.55);
+    border: 1px solid rgba(34, 29, 21, 0.15);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+    z-index: 2;
+  }
 
-@keyframes aurora {
-  0% {
-    background-position: 0% 50%;
+  /* Push-pin */
+  .pin::before {
+    content: "";
+    position: absolute;
+    top: -8px;
+    left: 50%;
+    width: 16px;
+    height: 16px;
+    transform: translateX(-50%);
+    border-radius: 9999px;
+    background: radial-gradient(circle at 35% 30%, #ff8a80, var(--color-brand-coral) 60%);
+    border: 2px solid var(--color-ink);
+    box-shadow: 0 3px 3px rgba(0, 0, 0, 0.3);
+    z-index: 2;
   }
-  50% {
-    background-position: 100% 50%;
+  .pin-blue::before {
+    background: radial-gradient(circle at 35% 30%, #8ab0ff, var(--color-brand-blue) 60%);
   }
-  100% {
-    background-position: 0% 50%;
-  }
-}
-
-.animate-aurora {
-  animation: aurora linear infinite;
-}
-
-@keyframes background-position-spin {
-  0% {
-    background-position: top center;
-  }
-  100% {
-    background-position: bottom center;
-  }
-}
-
-.animate-background-position-spin {
-  animation: background-position-spin 3000ms infinite linear;
-}
-
-@keyframes shine {
-  0% {
-    background-position: 0% 0%;
-  }
-  50% {
-    background-position: 100% 100%;
-  }
-  100% {
-    background-position: 0% 0%;
-  }
-}
-
-.animate-shine {
-  animation: shine var(--duration) infinite ease-in-out;
-}
-
-@keyframes gradient-move {
-  0% {
-    background-position: 0% 50%;
-  }
-  50% {
-    background-position: 100% 50%;
-  }
-  100% {
-    background-position: 0% 50%;
+  .pin-green::before {
+    background: radial-gradient(circle at 35% 30%, #7fe0ae, var(--color-brand-green) 60%);
   }
 }
 
-.animate-gradient-move {
-  animation: gradient-move 8s ease infinite;
+/* Floating animation for scattered notes */
+@keyframes float-y {
+  0%, 100% { transform: translateY(0) rotate(var(--rot, 0deg)); }
+  50% { transform: translateY(-10px) rotate(var(--rot, 0deg)); }
+}
+.animate-float {
+  animation: float-y 6s ease-in-out infinite;
 }
 
+/* Marquee strip */
+@keyframes marquee {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+.animate-marquee {
+  animation: marquee 28s linear infinite;
+}
+
+/* Scribble underline (SVG-free) */
+.scribble {
+  background-image: linear-gradient(to right, var(--color-brand-yellow), var(--color-brand-yellow));
+  background-repeat: no-repeat;
+  background-size: 100% 0.35em;
+  background-position: 0 88%;
+}
+
+/* Kept for legacy components */
 @keyframes confetti-fall {
-  0% {
-    transform: translateY(-100vh) rotate(0deg);
-    opacity: 1;
-  }
-  100% {
-    transform: translateY(100vh) rotate(360deg);
-    opacity: 0;
-  }
+  0% { transform: translateY(-100vh) rotate(0deg); opacity: 1; }
+  100% { transform: translateY(100vh) rotate(360deg); opacity: 0; }
 }
+@keyframes gradient-move {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+.animate-gradient-move { animation: gradient-move 8s ease infinite; }

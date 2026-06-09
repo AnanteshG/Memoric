@@ -1,18 +1,36 @@
 'use client';
 
 import { useState } from 'react';
-import { Upload, FileText, Link, AlertCircle, CheckCircle, Loader, Image as ImageIcon, MessageSquare, Youtube, Globe, ChevronDown } from 'lucide-react';
+import {
+    Upload, FileText, AlertCircle, Loader,
+    Image as ImageIcon, MessageSquare, Youtube, Globe, X,
+} from 'lucide-react';
 
 interface UploadModalProps {
     type?: string;
     isOpen: boolean;
     onClose: () => void;
-    onSuccess?: (data: any) => void;
+    onSuccess?: (data: unknown) => void;
 }
+
+const CONTENT_TYPES = [
+    { id: 'text', label: 'Note', icon: FileText, color: 'bg-brand-yellow' },
+    { id: 'tweet', label: 'X post', icon: MessageSquare, color: 'bg-brand-blue text-white' },
+    { id: 'reddit', label: 'Reddit', icon: Globe, color: 'bg-brand-orange text-white' },
+    { id: 'youtube', label: 'YouTube', icon: Youtube, color: 'bg-brand-coral text-white' },
+    { id: 'image', label: 'Image', icon: ImageIcon, color: 'bg-brand-green text-white' },
+];
+
+const TYPE_CONFIG: Record<string, { heading: string; placeholder: string; showFile?: boolean; showUrl?: boolean; urlPlaceholder?: string; acceptedFiles?: string }> = {
+    text: { heading: 'Write a note', placeholder: 'Write your note here…' },
+    tweet: { heading: 'Pin an X post', placeholder: 'Add your own notes (optional)…', showUrl: true, urlPlaceholder: 'https://x.com/…' },
+    reddit: { heading: 'Pin a Reddit post', placeholder: 'Add your own notes (optional)…', showUrl: true, urlPlaceholder: 'https://reddit.com/r/…' },
+    youtube: { heading: 'Pin a YouTube video', placeholder: 'Add your own notes (optional)…', showUrl: true, urlPlaceholder: 'https://youtube.com/watch?v=…' },
+    image: { heading: 'Pin an image', placeholder: 'Describe this image…', showFile: true, acceptedFiles: '.jpg,.jpeg,.png,.gif,.webp' },
+};
 
 export default function UploadModal({ type: initialType, isOpen, onClose, onSuccess }: UploadModalProps) {
     const [selectedType, setSelectedType] = useState(initialType || 'text');
-    const [showTypeDropdown, setShowTypeDropdown] = useState(false);
     const [content, setContent] = useState('');
     const [title, setTitle] = useState('');
     const [url, setUrl] = useState('');
@@ -21,15 +39,9 @@ export default function UploadModal({ type: initialType, isOpen, onClose, onSucc
     const [error, setError] = useState('');
     const [success, setSuccess] = useState(false);
 
-    const contentTypes = [
-        { id: 'text', label: 'Text Note', icon: FileText, description: 'Write notes and ideas' },
-        { id: 'image', label: 'Image', icon: ImageIcon, description: 'Upload images with descriptions' },
-        { id: 'tweet', label: 'X Post', icon: MessageSquare, description: 'Save X posts or threads' },
-        { id: 'reddit', label: 'Reddit Post', icon: Globe, description: 'Save Reddit posts and discussions' },
-        { id: 'youtube', label: 'YouTube Video', icon: Youtube, description: 'Save videos for later reference' },
-    ];
-
     if (!isOpen) return null;
+
+    const config = TYPE_CONFIG[selectedType] ?? TYPE_CONFIG.text;
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -40,28 +52,18 @@ export default function UploadModal({ type: initialType, isOpen, onClose, onSucc
             let finalContent = content;
             let finalTitle = title;
 
-            // Handle file upload for documents and images
-            if (file && (selectedType === 'document' || selectedType === 'image')) {
-                const formData = new FormData();
-                formData.append('file', file);
-
-                // Upload file first (you'd implement file upload endpoint)
-                // For now, we'll use file name as content
-                finalContent = file.name;
+            if (file && selectedType === 'image') {
+                finalContent = finalContent || file.name;
                 finalTitle = finalTitle || file.name;
             }
 
-            // Handle URL-based content
             if (url && (selectedType === 'tweet' || selectedType === 'reddit' || selectedType === 'youtube')) {
                 finalContent = content || url;
-                finalTitle = finalTitle || `${selectedType.charAt(0).toUpperCase() + selectedType.slice(1)} content`;
             }
 
             const response = await fetch('/api/content', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     type: selectedType,
                     content: finalContent,
@@ -71,7 +73,7 @@ export default function UploadModal({ type: initialType, isOpen, onClose, onSucc
                         fileName: file?.name,
                         fileSize: file?.size,
                         fileType: file?.type,
-                    }
+                    },
                 }),
             });
 
@@ -86,8 +88,7 @@ export default function UploadModal({ type: initialType, isOpen, onClose, onSucc
             setTimeout(() => {
                 onSuccess?.(result.data);
                 handleClose();
-            }, 1500);
-
+            }, 1200);
         } catch (err) {
             setError(err instanceof Error ? err.message : 'An error occurred');
         } finally {
@@ -105,172 +106,73 @@ export default function UploadModal({ type: initialType, isOpen, onClose, onSucc
         onClose();
     };
 
-    const getTypeConfig = () => {
-        switch (selectedType) {
-            case 'document':
-                return {
-                    title: 'Upload Document',
-                    description: 'Upload PDF, DOCX, or TXT files',
-                    placeholder: 'Describe your document...',
-                    showFile: true,
-                    showUrl: false,
-                    acceptedFiles: '.pdf,.doc,.docx,.txt'
-                };
-            case 'tweet':
-                return {
-                    title: 'Save Tweet',
-                    description: 'Save X posts or threads',
-                    placeholder: 'Paste tweet content or add notes...',
-                    showFile: false,
-                    showUrl: true,
-                    urlPlaceholder: 'https://x.com/...'
-                };
-            case 'reddit':
-                return {
-                    title: 'Save Reddit Post',
-                    description: 'Save Reddit posts and discussions',
-                    placeholder: 'Add notes about this Reddit post...',
-                    showFile: false,
-                    showUrl: true,
-                    urlPlaceholder: 'https://reddit.com/r/...'
-                };
-            case 'youtube':
-                return {
-                    title: 'Save YouTube Video',
-                    description: 'Save videos for later reference',
-                    placeholder: 'Add notes about this video...',
-                    showFile: false,
-                    showUrl: true,
-                    urlPlaceholder: 'https://youtube.com/watch?v=...'
-                };
-            case 'image':
-                return {
-                    title: 'Upload Image',
-                    description: 'Upload images with descriptions',
-                    placeholder: 'Describe this image...',
-                    showFile: true,
-                    showUrl: false,
-                    acceptedFiles: '.jpg,.jpeg,.png,.gif,.webp'
-                };
-            case 'text':
-                return {
-                    title: 'Create Note',
-                    description: 'Write notes and ideas',
-                    placeholder: 'Write your note here...',
-                    showFile: false,
-                    showUrl: false
-                };
-            default:
-                return {
-                    title: 'Add Content',
-                    description: 'Add new content to your knowledge base',
-                    placeholder: 'Enter content...',
-                    showFile: false,
-                    showUrl: false
-                };
-        }
+    const switchType = (id: string) => {
+        setSelectedType(id);
+        setContent('');
+        setTitle('');
+        setUrl('');
+        setFile(null);
+        setError('');
     };
 
-    const config = getTypeConfig();
-
     return (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-gray-900/95 border border-gray-700/50 rounded-2xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4 backdrop-blur-[2px]">
+            <div className="pin relative max-h-[90vh] w-full max-w-xl overflow-y-auto border-[3px] border-ink bg-paper p-6 shadow-hard-lg">
                 {success ? (
-                    <div className="text-center py-8">
-                        <CheckCircle size={64} className="text-green-400 mx-auto mb-4" />
-                        <h3 className="text-xl font-semibold text-white mb-2">Content Saved Successfully!</h3>
-                        <p className="text-gray-400">Your content has been processed and added to your knowledge base.</p>
+                    <div className="flex flex-col items-center py-10 text-center">
+                        <div className="rotate-[-2deg] border-[3px] border-ink bg-brand-green p-5 text-white shadow-hard">
+                            <p className="font-hand text-4xl">pinned! 📌</p>
+                        </div>
+                        <p className="mt-5 font-medium text-ink/60">Added to your board and tagged automatically.</p>
                     </div>
                 ) : (
                     <>
-                        <div className="flex items-center justify-between mb-6">
+                        <div className="mb-5 flex items-start justify-between">
                             <div>
-                                <h2 className="text-xl font-bold text-white">{config.title}</h2>
-                                <p className="text-gray-400 text-sm">{config.description}</p>
+                                <h2 className="text-2xl font-extrabold tracking-tight">{config.heading}</h2>
+                                <p className="font-hand text-xl text-ink/50">it gets summarized + tagged for you</p>
                             </div>
                             <button
                                 onClick={handleClose}
-                                className="text-gray-400 hover:text-white transition-colors duration-200"
                                 disabled={isLoading}
+                                className="border-2 border-ink bg-white p-1.5 shadow-hard-sm transition hover:-translate-y-0.5 hover:bg-brand-coral hover:text-white"
                             >
-                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-                                    <path d="M18 6L6 18M6 6L18 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                                </svg>
+                                <X size={16} />
                             </button>
                         </div>
 
-                        <form onSubmit={handleSubmit} className="space-y-4">
-                            {/* Content Type Dropdown */}
-                            <div>
-                                <label className="block text-sm font-medium text-gray-300 mb-2">
-                                    Content Type
-                                </label>
-                                <div className="relative">
+                        {/* Type chips */}
+                        <div className="mb-5 flex flex-wrap gap-2">
+                            {CONTENT_TYPES.map((t) => {
+                                const Icon = t.icon;
+                                const active = selectedType === t.id;
+                                return (
                                     <button
+                                        key={t.id}
                                         type="button"
-                                        onClick={() => setShowTypeDropdown(!showTypeDropdown)}
-                                        className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white flex items-center justify-between hover:border-gray-500 transition-colors duration-200"
+                                        onClick={() => switchType(t.id)}
+                                        disabled={isLoading}
+                                        className={`flex items-center gap-1.5 border-2 border-ink px-3 py-1.5 text-sm font-bold transition hover:-translate-y-0.5 ${
+                                            active ? `${t.color} shadow-hard-sm -translate-y-0.5` : 'bg-white'
+                                        }`}
                                     >
-                                        <div className="flex items-center space-x-2">
-                                            {(() => {
-                                                const currentType = contentTypes.find(t => t.id === selectedType);
-                                                const IconComponent = currentType?.icon || FileText;
-                                                return (
-                                                    <>
-                                                        <IconComponent size={16} className="text-purple-400" />
-                                                        <span>{currentType?.label || 'Select Type'}</span>
-                                                    </>
-                                                );
-                                            })()}
-                                        </div>
-                                        <ChevronDown size={16} className={`text-gray-400 transition-transform duration-200 ${showTypeDropdown ? 'rotate-180' : ''}`} />
+                                        <Icon size={14} />
+                                        {t.label}
                                     </button>
+                                );
+                            })}
+                        </div>
 
-                                    {showTypeDropdown && (
-                                        <div className="absolute top-full left-0 right-0 mt-1 bg-gray-800 border border-gray-600 rounded-lg shadow-lg z-10 max-h-60 overflow-y-auto">
-                                            {contentTypes.map((type) => {
-                                                const IconComponent = type.icon;
-                                                return (
-                                                    <button
-                                                        key={type.id}
-                                                        type="button"
-                                                        onClick={() => {
-                                                            setSelectedType(type.id);
-                                                            setShowTypeDropdown(false);
-                                                            // Reset form when type changes
-                                                            setContent('');
-                                                            setTitle('');
-                                                            setUrl('');
-                                                            setFile(null);
-                                                        }}
-                                                        className={`w-full flex items-center space-x-3 px-3 py-3 text-left hover:bg-gray-700 transition-colors duration-200 ${selectedType === type.id ? 'bg-gray-700' : ''
-                                                            }`}
-                                                    >
-                                                        <IconComponent size={16} className="text-purple-400" />
-                                                        <div>
-                                                            <div className="text-white font-medium">{type.label}</div>
-                                                            <div className="text-gray-400 text-xs">{type.description}</div>
-                                                        </div>
-                                                    </button>
-                                                );
-                                            })}
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-
+                        <form onSubmit={handleSubmit} className="space-y-4">
                             {selectedType !== 'tweet' && (
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-300 mb-2">
-                                        Title
-                                    </label>
+                                    <label className="mb-1.5 block text-sm font-extrabold uppercase tracking-wide">Title</label>
                                     <input
                                         type="text"
                                         value={title}
                                         onChange={(e) => setTitle(e.target.value)}
-                                        placeholder="Enter a title..."
-                                        className="w-full bg-gray-800/50 border border-gray-600/50 rounded-lg px-3 py-2 text-white placeholder-gray-400 focus:outline-none focus:border-purple-500/50 transition-colors duration-200"
+                                        placeholder="Give it a title…"
+                                        className="w-full border-[3px] border-ink bg-white px-3 py-2 font-medium shadow-hard-sm outline-none placeholder:text-ink/35 focus:-translate-y-0.5 focus:shadow-hard transition"
                                         disabled={isLoading}
                                     />
                                 </div>
@@ -278,15 +180,13 @@ export default function UploadModal({ type: initialType, isOpen, onClose, onSucc
 
                             {config.showUrl && (
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-300 mb-2">
-                                        URL
-                                    </label>
+                                    <label className="mb-1.5 block text-sm font-extrabold uppercase tracking-wide">Link</label>
                                     <input
                                         type="url"
                                         value={url}
                                         onChange={(e) => setUrl(e.target.value)}
                                         placeholder={config.urlPlaceholder}
-                                        className="w-full bg-gray-800/50 border border-gray-600/50 rounded-lg px-3 py-2 text-white placeholder-gray-400 focus:outline-none focus:border-purple-500/50 transition-colors duration-200"
+                                        className="w-full border-[3px] border-ink bg-white px-3 py-2 font-medium shadow-hard-sm outline-none placeholder:text-ink/35 focus:-translate-y-0.5 focus:shadow-hard transition"
                                         disabled={isLoading}
                                         required={selectedType !== 'text'}
                                     />
@@ -295,10 +195,8 @@ export default function UploadModal({ type: initialType, isOpen, onClose, onSucc
 
                             {config.showFile && (
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-300 mb-2">
-                                        File
-                                    </label>
-                                    <div className="border-2 border-dashed border-gray-600/50 rounded-lg p-6 text-center">
+                                    <label className="mb-1.5 block text-sm font-extrabold uppercase tracking-wide">File</label>
+                                    <div className="border-[3px] border-dashed border-ink/50 bg-white p-6 text-center">
                                         <input
                                             type="file"
                                             onChange={(e) => setFile(e.target.files?.[0] || null)}
@@ -308,8 +206,8 @@ export default function UploadModal({ type: initialType, isOpen, onClose, onSucc
                                             disabled={isLoading}
                                         />
                                         <label htmlFor="file-upload" className="cursor-pointer">
-                                            <Upload size={32} className="text-gray-400 mx-auto mb-2" />
-                                            <p className="text-gray-400">
+                                            <Upload size={28} className="mx-auto mb-2 text-ink/50" />
+                                            <p className="font-medium text-ink/60">
                                                 {file ? file.name : 'Click to upload or drag and drop'}
                                             </p>
                                         </label>
@@ -318,43 +216,43 @@ export default function UploadModal({ type: initialType, isOpen, onClose, onSucc
                             )}
 
                             <div>
-                                <label className="block text-sm font-medium text-gray-300 mb-2">
-                                    Content / Notes
+                                <label className="mb-1.5 block text-sm font-extrabold uppercase tracking-wide">
+                                    {selectedType === 'text' ? 'Note' : 'Notes'}
                                 </label>
                                 <textarea
                                     value={content}
                                     onChange={(e) => setContent(e.target.value)}
                                     placeholder={config.placeholder}
-                                    rows={6}
-                                    className="w-full bg-gray-800/50 border border-gray-600/50 rounded-lg px-3 py-2 text-white placeholder-gray-400 focus:outline-none focus:border-purple-500/50 transition-colors duration-200 resize-none"
+                                    rows={5}
+                                    className="w-full resize-none border-[3px] border-ink bg-white px-3 py-2 font-medium shadow-hard-sm outline-none placeholder:text-ink/35 focus:-translate-y-0.5 focus:shadow-hard transition"
                                     disabled={isLoading}
                                     required={selectedType === 'text' && !file}
                                 />
                             </div>
 
                             {error && (
-                                <div className="flex items-center space-x-2 text-red-400 bg-red-400/10 border border-red-400/20 rounded-lg p-3">
+                                <div className="flex items-center gap-2 border-2 border-ink bg-brand-coral px-3 py-2 text-sm font-bold text-white shadow-hard-sm">
                                     <AlertCircle size={16} />
-                                    <span className="text-sm">{error}</span>
+                                    <span>{error}</span>
                                 </div>
                             )}
 
-                            <div className="flex items-center justify-between pt-4">
+                            <div className="flex items-center justify-between pt-2">
                                 <button
                                     type="button"
                                     onClick={handleClose}
-                                    className="px-4 py-2 text-gray-400 hover:text-white transition-colors duration-200"
                                     disabled={isLoading}
+                                    className="font-bold text-ink/50 underline-offset-4 hover:underline"
                                 >
                                     Cancel
                                 </button>
                                 <button
                                     type="submit"
                                     disabled={isLoading || (!content && !file && !url)}
-                                    className="bg-gradient-to-r from-purple-600 to-pink-600 text-white px-6 py-2 rounded-lg font-semibold hover:from-purple-700 hover:to-pink-700 transition-all duration-300 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center space-x-2"
+                                    className="flex items-center gap-2 border-[3px] border-ink bg-brand-coral px-6 py-2.5 font-extrabold text-white shadow-hard transition hover:-translate-x-0.5 hover:-translate-y-0.5 disabled:opacity-40"
                                 >
                                     {isLoading && <Loader size={16} className="animate-spin" />}
-                                    <span>{isLoading ? 'Processing...' : 'Save Content'}</span>
+                                    {isLoading ? 'Pinning…' : '📌 Pin it'}
                                 </button>
                             </div>
                         </form>

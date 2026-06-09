@@ -13,8 +13,6 @@ import {
     Globe,
     Youtube,
     Search,
-    Grid,
-    List,
     Plus,
     Zap,
     Clock,
@@ -25,11 +23,11 @@ import {
     ExternalLink,
     BarChart3,
     LayoutGrid,
+    Play,
 } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
 
-// Define the types for content items
 interface ContentItem {
     id: string;
     type: 'tweet' | 'reddit' | 'image' | 'youtube' | 'text';
@@ -66,10 +64,13 @@ interface ContentItem {
     };
 }
 
+/* Deterministic pseudo-random rotation per card position */
+const ROTS = [-2.5, 1.5, -1, 2.5, -1.8, 1, -3, 2];
+const PINS = ['pin', 'pin pin-blue', 'tape', 'pin pin-green', 'tape', 'pin'];
+
 export default function Space() {
     const router = useRouter();
     const [selectedCategory, setSelectedCategory] = useState<string>('all');
-    const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
     const [showUploadModal, setShowUploadModal] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [contentItems, setContentItems] = useState<ContentItem[]>([]);
@@ -82,7 +83,6 @@ export default function Space() {
         favorites: 0,
     });
 
-    // Fetch user statistics
     const fetchUserStats = useCallback(async () => {
         try {
             const response = await fetch('/api/user/stats');
@@ -95,7 +95,6 @@ export default function Space() {
         }
     }, []);
 
-    // Fetch content from API
     const fetchContent = useCallback(
         async (refresh = false) => {
             if (refresh) setIsRefreshing(true);
@@ -126,17 +125,15 @@ export default function Space() {
         fetchUserStats();
     }, [fetchContent, fetchUserStats]);
 
-    // Handle successful upload
     const handleUploadSuccess = useCallback(
-        (newContent: ContentItem) => {
-            setContentItems((prev) => [newContent, ...prev]);
+        (newContent: unknown) => {
+            setContentItems((prev) => [newContent as ContentItem, ...prev]);
             fetchContent(true);
             fetchUserStats();
         },
         [fetchContent, fetchUserStats]
     );
 
-    // Handle delete content
     const handleDeleteContent = useCallback(
         async (itemId: string) => {
             try {
@@ -154,7 +151,6 @@ export default function Space() {
         [fetchUserStats]
     );
 
-    // Handle opening content
     const handleOpenContent = useCallback((item: ContentItem) => {
         const link = item.url || (item as unknown as { originalLink?: string }).originalLink;
         if (link) {
@@ -163,12 +159,12 @@ export default function Space() {
     }, []);
 
     const categories = [
-        { id: 'all', name: 'All Content', icon: LayoutGrid, count: contentItems.length },
-        { id: 'tweet', name: 'X Posts', icon: MessageSquare, count: contentItems.filter((i) => i.type === 'tweet').length },
-        { id: 'reddit', name: 'Reddit', icon: Globe, count: contentItems.filter((i) => i.type === 'reddit').length },
-        { id: 'youtube', name: 'YouTube', icon: Youtube, count: contentItems.filter((i) => i.type === 'youtube').length },
-        { id: 'image', name: 'Images', icon: ImageIcon, count: contentItems.filter((i) => i.type === 'image').length },
-        { id: 'text', name: 'Notes', icon: FileText, count: contentItems.filter((i) => i.type === 'text').length },
+        { id: 'all', name: 'Everything', icon: LayoutGrid, color: 'bg-ink text-paper', count: contentItems.length },
+        { id: 'tweet', name: 'X posts', icon: MessageSquare, color: 'bg-brand-blue text-white', count: contentItems.filter((i) => i.type === 'tweet').length },
+        { id: 'reddit', name: 'Reddit', icon: Globe, color: 'bg-brand-orange text-white', count: contentItems.filter((i) => i.type === 'reddit').length },
+        { id: 'youtube', name: 'YouTube', icon: Youtube, color: 'bg-brand-coral text-white', count: contentItems.filter((i) => i.type === 'youtube').length },
+        { id: 'image', name: 'Images', icon: ImageIcon, color: 'bg-brand-green text-white', count: contentItems.filter((i) => i.type === 'image').length },
+        { id: 'text', name: 'Notes', icon: FileText, color: 'bg-brand-yellow', count: contentItems.filter((i) => i.type === 'text').length },
     ];
 
     const filteredItems = contentItems.filter((item) => {
@@ -181,59 +177,79 @@ export default function Space() {
         return matchesCategory && matchesSearch;
     });
 
-    const getTypeIcon = (type: string) => {
-        switch (type) {
-            case 'tweet': return MessageSquare;
-            case 'reddit': return Globe;
-            case 'youtube': return Youtube;
-            case 'image': return ImageIcon;
-            case 'text': return FileText;
-            default: return FileText;
-        }
-    };
-
-    const getTypeColor = (type: string) => {
-        switch (type) {
-            case 'tweet': return 'text-sky-400';
-            case 'reddit': return 'text-orange-400';
-            case 'youtube': return 'text-red-400';
-            case 'image': return 'text-emerald-400';
-            case 'text': return 'text-violet-400';
-            default: return 'text-zinc-400';
-        }
-    };
-
     const stats = [
-        { label: 'Total Content', value: userStats.totalContent, icon: BarChart3, accent: 'text-violet-400' },
-        { label: 'AI Queries', value: userStats.aiQueries, icon: Zap, accent: 'text-amber-400' },
-        { label: 'Time Saved', value: `${userStats.timeSavedHours}h`, icon: Clock, accent: 'text-emerald-400' },
-        { label: 'Favorites', value: userStats.favorites, icon: Star, accent: 'text-rose-400' },
+        { label: 'pins on board', value: userStats.totalContent, icon: BarChart3, color: 'bg-brand-yellow', rot: -2 },
+        { label: 'questions asked', value: userStats.aiQueries, icon: Zap, color: 'bg-brand-pink', rot: 1.5 },
+        { label: 'hours saved', value: `${userStats.timeSavedHours}`, icon: Clock, color: 'bg-brand-green text-white', rot: -1 },
+        { label: 'favorites', value: userStats.favorites, icon: Star, color: 'bg-brand-blue text-white', rot: 2 },
     ];
-
-    const activeCategoryName = categories.find((c) => c.id === selectedCategory)?.name ?? 'All Content';
 
     return (
         <SignedIn>
-            <div className="flex min-h-screen bg-zinc-950 text-zinc-100">
-                {/* ---------- Sidebar ---------- */}
-                <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col border-r border-white/5 bg-black/60 p-4 lg:flex">
-                    <button
-                        onClick={() => router.push('/')}
-                        className="mb-6 flex items-center gap-2.5 px-2"
-                    >
-                        <Image src="/assets/Logo.png" alt="Memoric" width={32} height={32} className="h-8 w-8 object-contain" />
-                        <span className="text-lg font-semibold tracking-tight">Memoric</span>
-                    </button>
+            <div className="min-h-screen">
+                {/* Top bar */}
+                <header className="sticky top-0 z-30 border-b-[3px] border-ink bg-paper/95 backdrop-blur">
+                    <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-3 px-4 py-3 sm:px-6">
+                        <button onClick={() => router.push('/')} className="flex items-center gap-2">
+                            <div className="border-2 border-ink bg-white p-0.5 shadow-hard-sm">
+                                <Image src="/assets/logo.svg" alt="Memoric" width={30} height={30} className="h-7 w-7 object-contain" />
+                            </div>
+                            <span className="hidden text-xl font-extrabold tracking-tight sm:inline">
+                                Memoric<span className="text-brand-coral">.</span>
+                            </span>
+                        </button>
 
-                    <button
-                        onClick={() => setShowUploadModal(true)}
-                        className="mb-6 flex items-center justify-center gap-2 rounded-lg bg-violet-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-violet-500"
-                    >
-                        <Plus size={16} /> Add content
-                    </button>
+                        <div className="order-3 flex w-full items-center gap-2 border-[3px] border-ink bg-white px-3 py-1.5 shadow-hard-sm sm:order-none sm:w-auto sm:flex-1 sm:max-w-md">
+                            <Search size={16} className="shrink-0 text-ink/50" />
+                            <input
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                placeholder="Search your board…"
+                                className="min-w-0 flex-1 bg-transparent py-1 text-sm font-medium outline-none placeholder:text-ink/40"
+                            />
+                        </div>
 
-                    <nav className="flex flex-col gap-1">
-                        <p className="px-3 pb-1 text-xs font-medium uppercase tracking-wider text-zinc-500">Library</p>
+                        <button
+                            onClick={() => fetchContent(true)}
+                            disabled={isRefreshing}
+                            className="ml-auto border-2 border-ink bg-white p-2 shadow-hard-sm transition hover:-translate-y-0.5 disabled:opacity-50 sm:ml-0"
+                            title="Refresh"
+                        >
+                            <RefreshCw size={16} className={isRefreshing ? 'animate-spin' : ''} />
+                        </button>
+
+                        <button
+                            onClick={() => setShowUploadModal(true)}
+                            className="flex items-center gap-1.5 border-[3px] border-ink bg-brand-coral px-4 py-1.5 font-extrabold text-white shadow-hard transition hover:-translate-x-0.5 hover:-translate-y-0.5"
+                        >
+                            <Plus size={18} /> Pin it
+                        </button>
+                    </div>
+                </header>
+
+                <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
+                    {/* Stats as sticky notes */}
+                    <div className="mb-7 grid grid-cols-2 gap-4 sm:grid-cols-4">
+                        {stats.map((s) => {
+                            const Icon = s.icon;
+                            return (
+                                <div
+                                    key={s.label}
+                                    style={{ transform: `rotate(${s.rot}deg)` }}
+                                    className={`border-[3px] border-ink p-3.5 shadow-hard ${s.color}`}
+                                >
+                                    <div className="flex items-center justify-between">
+                                        <p className="text-3xl font-extrabold">{s.value}</p>
+                                        <Icon size={20} />
+                                    </div>
+                                    <p className="font-hand text-xl leading-none opacity-80">{s.label}</p>
+                                </div>
+                            );
+                        })}
+                    </div>
+
+                    {/* Category tabs */}
+                    <div className="mb-6 flex flex-wrap items-center gap-2.5">
                         {categories.map((cat) => {
                             const Icon = cat.icon;
                             const active = selectedCategory === cat.id;
@@ -241,137 +257,55 @@ export default function Space() {
                                 <button
                                     key={cat.id}
                                     onClick={() => setSelectedCategory(cat.id)}
-                                    className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition ${
-                                        active
-                                            ? 'bg-white/10 text-white'
-                                            : 'text-zinc-400 hover:bg-white/5 hover:text-zinc-200'
+                                    className={`flex items-center gap-1.5 border-2 border-ink px-3 py-1.5 text-sm font-bold transition hover:-translate-y-0.5 ${
+                                        active ? `${cat.color} shadow-hard-sm -translate-y-0.5` : 'bg-white'
                                     }`}
                                 >
-                                    <Icon size={16} className={active ? 'text-violet-400' : ''} />
-                                    <span className="flex-1 text-left">{cat.name}</span>
-                                    <span className="rounded-full bg-white/5 px-2 py-0.5 text-xs text-zinc-400">{cat.count}</span>
+                                    <Icon size={14} />
+                                    {cat.name}
+                                    <span className={`ml-0.5 text-xs ${active ? 'opacity-80' : 'text-ink/40'}`}>{cat.count}</span>
                                 </button>
                             );
                         })}
-                    </nav>
-                </aside>
+                    </div>
 
-                {/* ---------- Main ---------- */}
-                <main className="flex-1 overflow-x-hidden">
-                    {/* Top bar */}
-                    <header className="sticky top-0 z-10 border-b border-white/5 bg-zinc-950/80 backdrop-blur">
-                        <div className="flex flex-wrap items-center gap-3 px-5 py-4">
-                            <div className="mr-auto">
-                                <h1 className="text-xl font-semibold tracking-tight">Your Space</h1>
-                                <p className="text-sm text-zinc-500">Store, organize, and chat with your content</p>
+                    {/* Board */}
+                    {isLoading ? (
+                        <div className="flex flex-col items-center justify-center py-24">
+                            <div className="border-[3px] border-ink bg-brand-yellow p-4 shadow-hard">
+                                <Loader className="animate-spin" size={28} />
                             </div>
-
-                            <div className="relative">
-                                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
-                                <input
-                                    value={searchQuery}
-                                    onChange={(e) => setSearchQuery(e.target.value)}
-                                    placeholder="Search your content..."
-                                    className="w-56 rounded-lg border border-white/10 bg-white/5 py-2 pl-9 pr-3 text-sm text-zinc-100 placeholder-zinc-500 outline-none transition focus:border-violet-500/50 focus:bg-white/10"
-                                />
+                            <p className="mt-4 font-hand text-2xl">unrolling your board…</p>
+                        </div>
+                    ) : filteredItems.length === 0 ? (
+                        <div className="mx-auto flex max-w-md flex-col items-center border-[3px] border-dashed border-ink/40 px-6 py-20 text-center">
+                            <div className="rotate-[-3deg] border-[3px] border-ink bg-brand-yellow p-5 shadow-hard">
+                                <p className="font-hand text-3xl">nothing pinned yet!</p>
                             </div>
-
-                            <button
-                                onClick={() => fetchContent(true)}
-                                disabled={isRefreshing}
-                                className="rounded-lg border border-white/10 p-2 text-zinc-400 transition hover:bg-white/5 hover:text-white disabled:opacity-50"
-                                title="Refresh"
-                            >
-                                <RefreshCw size={16} className={isRefreshing ? 'animate-spin' : ''} />
-                            </button>
-
-                            <div className="flex items-center rounded-lg border border-white/10 p-0.5">
-                                <button
-                                    onClick={() => setViewMode('grid')}
-                                    className={`rounded-md p-1.5 transition ${viewMode === 'grid' ? 'bg-violet-600 text-white' : 'text-zinc-400 hover:text-white'}`}
-                                >
-                                    <Grid size={16} />
-                                </button>
-                                <button
-                                    onClick={() => setViewMode('list')}
-                                    className={`rounded-md p-1.5 transition ${viewMode === 'list' ? 'bg-violet-600 text-white' : 'text-zinc-400 hover:text-white'}`}
-                                >
-                                    <List size={16} />
-                                </button>
-                            </div>
-
+                            <p className="mt-6 font-medium text-ink/60">
+                                {searchQuery ? 'No pins match your search.' : 'Save your first link, note or post and it shows up here.'}
+                            </p>
                             <button
                                 onClick={() => setShowUploadModal(true)}
-                                className="flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-violet-500 lg:hidden"
+                                className="mt-5 flex items-center gap-2 border-[3px] border-ink bg-brand-coral px-5 py-2.5 font-extrabold text-white shadow-hard transition hover:-translate-x-0.5 hover:-translate-y-0.5"
                             >
-                                <Plus size={16} /> Add
+                                <Plus size={18} /> Pin something
                             </button>
                         </div>
-                    </header>
+                    ) : (
+                        <div className="columns-1 gap-5 sm:columns-2 lg:columns-3 xl:columns-4">
+                            {filteredItems.map((item, idx) => {
+                                const rot = ROTS[idx % ROTS.length];
+                                const pinCls = PINS[idx % PINS.length];
 
-                    <div className="px-5 py-6">
-                        {/* Stats */}
-                        <div className="mb-8 grid grid-cols-2 gap-3 lg:grid-cols-4">
-                            {stats.map((s) => {
-                                const Icon = s.icon;
-                                return (
-                                    <div
-                                        key={s.label}
-                                        className="rounded-xl border border-white/5 bg-white/[0.03] p-4 transition hover:border-white/10"
-                                    >
-                                        <div className="flex items-center justify-between">
-                                            <span className="text-sm text-zinc-500">{s.label}</span>
-                                            <Icon size={16} className={s.accent} />
-                                        </div>
-                                        <p className="mt-2 text-2xl font-semibold">{s.value}</p>
-                                    </div>
-                                );
-                            })}
-                        </div>
-
-                        {/* Content header */}
-                        <div className="mb-4 flex items-center gap-2">
-                            <h2 className="text-lg font-semibold">{activeCategoryName}</h2>
-                            <span className="rounded-full bg-white/5 px-2 py-0.5 text-xs text-zinc-400">{filteredItems.length}</span>
-                        </div>
-
-                        {/* States */}
-                        {isLoading ? (
-                            <div className="flex flex-col items-center justify-center py-24 text-zinc-500">
-                                <Loader className="mb-3 animate-spin" size={28} />
-                                <p>Loading your content...</p>
-                            </div>
-                        ) : filteredItems.length === 0 ? (
-                            <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-white/10 py-24 text-center">
-                                <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-white/5">
-                                    <Plus className="text-violet-400" size={24} />
-                                </div>
-                                <h3 className="text-lg font-medium">Nothing here yet</h3>
-                                <p className="mt-1 max-w-sm text-sm text-zinc-500">
-                                    {searchQuery
-                                        ? 'No content matches your search.'
-                                        : 'Save your first link, note, or post to start building your second brain.'}
-                                </p>
-                                <button
-                                    onClick={() => setShowUploadModal(true)}
-                                    className="mt-5 flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-violet-500"
-                                >
-                                    <Plus size={16} /> Add content
-                                </button>
-                            </div>
-                        ) : (
-                            <div
-                                className={
-                                    viewMode === 'grid'
-                                        ? 'grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3'
-                                        : 'flex flex-col gap-3'
-                                }
-                            >
-                                {filteredItems.map((item) => {
-                                    if (item.type === 'tweet') {
-                                        return (
+                                if (item.type === 'tweet') {
+                                    return (
+                                        <div
+                                            key={item.id}
+                                            style={{ transform: `rotate(${rot}deg)` }}
+                                            className={`relative mb-6 break-inside-avoid border-[3px] border-ink shadow-hard ${pinCls}`}
+                                        >
                                             <XCard
-                                                key={item.id}
                                                 id={item.id}
                                                 title={item.title}
                                                 tweetData={item.tweetData}
@@ -382,75 +316,90 @@ export default function Space() {
                                                 onTitleChange={() => {}}
                                                 onClick={() => handleOpenContent(item)}
                                             />
-                                        );
-                                    }
+                                        </div>
+                                    );
+                                }
 
-                                    const TypeIcon = getTypeIcon(item.type);
-                                    return (
-                                        <article
-                                            key={item.id}
-                                            onClick={() => handleOpenContent(item)}
-                                            className="group relative flex cursor-pointer flex-col overflow-hidden rounded-xl border border-white/5 bg-white/[0.03] p-4 transition hover:border-white/15 hover:bg-white/[0.06]"
-                                        >
-                                            {item.thumbnail && (
-                                                // eslint-disable-next-line @next/next/no-img-element
-                                                <img
-                                                    src={item.thumbnail}
-                                                    alt={item.title}
-                                                    className="mb-3 h-36 w-full rounded-lg object-cover"
-                                                />
-                                            )}
+                                const isNote = item.type === 'text';
+                                const noteColors = ['bg-brand-yellow', 'bg-brand-pink', 'bg-brand-green text-white'];
+                                const noteColor = noteColors[idx % noteColors.length];
 
-                                            <div className="mb-2 flex items-center gap-2">
-                                                <span className={`flex items-center gap-1.5 rounded-md bg-white/5 px-2 py-1 text-xs ${getTypeColor(item.type)}`}>
-                                                    <TypeIcon size={12} />
-                                                    {item.platform || item.type}
-                                                </span>
-                                                <span className="ml-auto text-xs text-zinc-500">
+                                return (
+                                    <article
+                                        key={item.id}
+                                        style={{ ['--rot' as string]: `${rot}deg`, transform: `rotate(${rot}deg)` }}
+                                        onClick={() => handleOpenContent(item)}
+                                        className={`hover-lift group relative mb-6 break-inside-avoid cursor-pointer border-[3px] border-ink p-4 shadow-hard ${pinCls} ${
+                                            isNote ? noteColor : 'bg-white'
+                                        }`}
+                                    >
+                                        {/* Type strip for link content */}
+                                        {!isNote && (
+                                            <div className="mb-2.5 flex items-center gap-1.5 text-xs font-extrabold uppercase tracking-wide">
+                                                {item.type === 'youtube' && <span className="flex items-center gap-1 bg-brand-coral px-1.5 py-0.5 text-white"><Play size={11} fill="white" /> YouTube</span>}
+                                                {item.type === 'reddit' && <span className="flex items-center gap-1 bg-brand-orange px-1.5 py-0.5 text-white"><Globe size={11} /> Reddit</span>}
+                                                {item.type === 'image' && <span className="flex items-center gap-1 bg-brand-green px-1.5 py-0.5 text-white"><ImageIcon size={11} /> Image</span>}
+                                                <span className="ml-auto font-medium normal-case text-ink/40">
                                                     {new Date(item.createdAt).toLocaleDateString()}
                                                 </span>
                                             </div>
+                                        )}
 
-                                            <h3 className="line-clamp-2 font-semibold text-zinc-100">{item.title}</h3>
-                                            {(item.summary || item.content) && (
-                                                <p className="mt-1 line-clamp-3 text-sm text-zinc-400">
+                                        {item.thumbnail && (
+                                            // eslint-disable-next-line @next/next/no-img-element
+                                            <img src={item.thumbnail} alt={item.title} className="mb-3 w-full border-2 border-ink object-cover" />
+                                        )}
+
+                                        {isNote ? (
+                                            <>
+                                                <h3 className="font-hand text-3xl leading-none">{item.title}</h3>
+                                                <p className="mt-2 line-clamp-5 font-hand text-xl leading-snug opacity-80">
                                                     {item.summary || item.content}
                                                 </p>
-                                            )}
-
-                                            {item.tags?.length > 0 && (
-                                                <div className="mt-3 flex flex-wrap gap-1.5">
-                                                    {item.tags.slice(0, 3).map((tag, i) => (
-                                                        <span key={i} className="rounded-md bg-white/5 px-2 py-0.5 text-xs text-zinc-400">
-                                                            #{tag}
-                                                        </span>
-                                                    ))}
-                                                </div>
-                                            )}
-
-                                            <div className="mt-4 flex items-center gap-2 pt-3">
-                                                {item.url && (
-                                                    <span className="flex items-center gap-1 text-xs text-zinc-500">
-                                                        <ExternalLink size={12} /> Open
-                                                    </span>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <h3 className="line-clamp-2 text-[17px] font-extrabold leading-snug">{item.title}</h3>
+                                                {(item.summary || item.content) && (
+                                                    <p className="mt-1.5 line-clamp-3 text-sm font-medium text-ink/60">
+                                                        {item.summary || item.content}
+                                                    </p>
                                                 )}
-                                                <button
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        handleDeleteContent(item.id);
-                                                    }}
-                                                    className="ml-auto rounded-md p-1.5 text-zinc-500 opacity-0 transition hover:bg-rose-500/10 hover:text-rose-400 group-hover:opacity-100"
-                                                    title="Delete"
-                                                >
-                                                    <Trash2 size={14} />
-                                                </button>
+                                            </>
+                                        )}
+
+                                        {item.tags?.length > 0 && (
+                                            <div className="mt-3 flex flex-wrap gap-1.5">
+                                                {item.tags.slice(0, 3).map((tag, i) => (
+                                                    <span key={i} className={`border-2 border-ink px-1.5 py-0.5 text-[11px] font-bold ${isNote ? 'bg-white/60 text-ink' : 'bg-paper'}`}>
+                                                        #{tag}
+                                                    </span>
+                                                ))}
                                             </div>
-                                        </article>
-                                    );
-                                })}
-                            </div>
-                        )}
-                    </div>
+                                        )}
+
+                                        <div className="mt-3 flex items-center">
+                                            {item.url && (
+                                                <span className={`flex items-center gap-1 text-xs font-bold ${isNote ? 'opacity-60' : 'text-ink/40'}`}>
+                                                    <ExternalLink size={12} /> open
+                                                </span>
+                                            )}
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleDeleteContent(item.id);
+                                                }}
+                                                className="ml-auto border-2 border-ink bg-white p-1 text-ink opacity-0 shadow-hard-sm transition hover:bg-brand-coral hover:text-white group-hover:opacity-100"
+                                                title="Unpin"
+                                            >
+                                                <Trash2 size={13} />
+                                            </button>
+                                        </div>
+                                    </article>
+                                );
+                            })}
+                        </div>
+                    )}
                 </main>
 
                 <UploadModal
