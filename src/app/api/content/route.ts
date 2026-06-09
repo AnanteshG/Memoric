@@ -1,22 +1,22 @@
 // src/app/api/content/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { v4 as uuidv4 } from 'uuid';
-import { getUserId } from '@/lib/supabase/server';
-import { db } from '@/lib/firebase';
-import { collection, addDoc, query, where, orderBy, getDocs, deleteDoc, doc, getDoc, setDoc } from 'firebase/firestore';
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { processContent } from '@/lib/services/processContent';
+import { createClient, getUserId } from '@/lib/supabase/server';
+import { rowToContent } from '@/lib/content';
 
 export const dynamic = 'force-dynamic';
 
-// Initialize Gemini AI
 const genAI = new GoogleGenerativeAI(process.env.NEXT_PUBLIC_GEMINI_API_KEY || '');
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
-// Get all content
+const VALID_TYPES = ['note', 'tweet', 'x', 'document', 'website', 'image', 'youtube', 'reddit', 'text'];
+
+// ---------------------------------------------------------------------------
+// GET: list the user's content (optional ?type= and ?search=)
+// ---------------------------------------------------------------------------
 export async function GET(request: NextRequest) {
   try {
     const userId = await getUserId();
-    
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -25,404 +25,243 @@ export async function GET(request: NextRequest) {
     const type = searchParams.get('type');
     const search = searchParams.get('search');
 
-    const contentRef = collection(db, 'content');
-    let q = query(
-      contentRef,
-      where('userId', '==', userId),
-      orderBy('timestamp', 'desc')
-    );
-    
-    const snapshot = await getDocs(q);
-    let content = snapshot.docs.map(doc => {
-      const data = doc.data();
-      // Convert any Firestore Timestamp objects to ISO strings
-      const processedData = JSON.parse(JSON.stringify(data, (key, value) => {
-        // Handle Firestore Timestamp objects
-        if (value && typeof value === 'object' && value.toDate) {
-          return value.toDate().toISOString();
-        }
-        // Handle regular Date objects
-        if (value instanceof Date) {
-          return value.toISOString();
-        }
-        return value;
-      }));
-      
-      return {
-        id: doc.id,
-        ...processedData,
-        // Ensure we have a createdAt field
-        createdAt: processedData.timestamp || processedData.createdAt || new Date().toISOString()
-      };
-    });
+    const supabase = await createClient();
+    let query = supabase
+      .from('content')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
 
-    // Filter by type if specified
     if (type && type !== 'all') {
-      content = content.filter((item: any) => item.type === type);
+      query = query.eq('type', type);
     }
 
-    // Filter by search if specified
+    const { data: rows, error } = await query;
+    if (error) throw error;
+
+    let content = (rows ?? []).map(rowToContent);
+
     if (search) {
-      const searchLower = search.toLowerCase();
-      content = content.filter((item: any) =>
-        item.title?.toLowerCase().includes(searchLower) ||
-        item.content?.toLowerCase().includes(searchLower) ||
-        item.summary?.toLowerCase().includes(searchLower) ||
-        item.tags?.some((tag: string) => tag.toLowerCase().includes(searchLower))
+      const s = search.toLowerCase();
+      content = content.filter(
+        (item) =>
+          item.title.toLowerCase().includes(s) ||
+          item.content.toLowerCase().includes(s) ||
+          item.summary.toLowerCase().includes(s) ||
+          item.tags.some((t) => t.toLowerCase().includes(s))
       );
     }
-    
-    return NextResponse.json({ 
-      success: true,
-      data: content,
-      total: content.length
-    });
+
+    return NextResponse.json({ success: true, data: content, total: content.length });
   } catch (error) {
     console.error('Get content error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 
-// Add new content (note, x post, website, document, image, youtube, reddit)
+// ---------------------------------------------------------------------------
+// POST: create content (note / link / etc.)
+// ---------------------------------------------------------------------------
 export async function POST(req: NextRequest) {
   try {
     const userId = await getUserId();
-    
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const { content, type, url, title, metadata } = await req.json();
 
-    if (!type || !["note", "tweet", "x", "document", "website", "image", "youtube", "reddit", "text"].includes(type)) {
-      return NextResponse.json({ error: "Invalid type" }, { status: 400 });
+    if (!type || !VALID_TYPES.includes(type)) {
+      return NextResponse.json({ error: 'Invalid type' }, { status: 400 });
     }
 
-    let finalContent = content || "";
-    let finalTitle = title || "";
-    let externalData = null;
+    const supabase = await createClient();
 
-    // Fetch external data based on type and URL
+    let finalContent = content || '';
+    let finalTitle = title || '';
+    let externalData: Record<string, unknown> | null = null;
+
+    // Fetch external data for known link types.
     if (url) {
       try {
+        let endpoint: string | null = null;
         if ((type === 'tweet' || type === 'x') && (url.includes('twitter.com') || url.includes('x.com'))) {
-          const response = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/external/x`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url })
-          });
-          if (response.ok) {
-            const result = await response.json();
-            externalData = result.data;
-            finalContent = finalContent || externalData.text;
-            
-            // Generate AI title for X post
-            if (externalData.text && !finalTitle) {
-              try {
-                const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
-                const titlePrompt = `Generate a concise, descriptive title (max 60 characters) for this X post content: "${externalData.text.substring(0, 200)}"
-                
-                Return only the title, no quotes or extra text.`;
-                
-                const titleResult = await model.generateContent(titlePrompt);
-                const aiTitle = titleResult.response.text().trim();
-                finalTitle = aiTitle.length > 60 ? aiTitle.substring(0, 57) + '...' : aiTitle;
-              } catch (aiError) {
-                console.warn('AI title generation failed, using fallback:', aiError);
-                finalTitle = externalData.text?.substring(0, 50) + '...';
-              }
-            }
-          }
+          endpoint = '/api/external/x';
         } else if (type === 'reddit' && url.includes('reddit.com')) {
-          const response = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/external/reddit`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url })
-          });
-          if (response.ok) {
-            const result = await response.json();
-            externalData = result.data;
-            finalTitle = finalTitle || externalData.title;
-            finalContent = finalContent || externalData.selftext || externalData.title;
-          }
+          endpoint = '/api/external/reddit';
         } else if (type === 'youtube' && (url.includes('youtube.com') || url.includes('youtu.be'))) {
-          const response = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/external/youtube`, {
+          endpoint = '/api/external/youtube';
+        }
+
+        if (endpoint) {
+          const response = await fetch(`${APP_URL}${endpoint}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url })
+            body: JSON.stringify({ url }),
           });
           if (response.ok) {
             const result = await response.json();
             externalData = result.data;
-            finalTitle = finalTitle || externalData.title;
-            finalContent = finalContent || externalData.description;
+            finalTitle = finalTitle || (externalData?.title as string) || '';
+            finalContent =
+              finalContent ||
+              (externalData?.text as string) ||
+              (externalData?.selftext as string) ||
+              (externalData?.description as string) ||
+              '';
           }
         }
       } catch (externalError) {
-        console.warn('External API failed, proceeding with user content:', externalError);
+        console.warn('External fetch failed, using user content:', externalError);
       }
     }
 
-    // Handle different content types
-    if (type === "tweet" && url) {
-      // Check for existing X post
-      const contentRef = collection(db, 'content');
-      const q = query(
-        contentRef,
-        where('type', '==', 'tweet'),
-        where('originalLink', '==', url),
-        where('userId', '==', userId)
-      );
-      
-      const snapshot = await getDocs(q);
-      if (!snapshot.empty) {
-        return NextResponse.json({ error: "X post already saved" }, { status: 409 });
-      }
-      
-      finalContent = content || finalContent || url;
-      
-      // Generate AI title if not already set
-      if (!finalTitle && finalContent) {
-        try {
-          const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
-          const titlePrompt = `Generate a concise, descriptive title (max 60 characters) for this X post: "${finalContent.substring(0, 200)}"
-          
-          Return only the title, no quotes or extra text.`;
-          
-          const titleResult = await model.generateContent(titlePrompt);
-          const aiTitle = titleResult.response.text().trim();
-          finalTitle = aiTitle.length > 60 ? aiTitle.substring(0, 57) + '...' : aiTitle;
-        } catch (aiError) {
-          console.warn('AI title generation failed, using fallback:', aiError);
-          finalTitle = finalContent.substring(0, 50) + '...';
-        }
-      }
-      
-      // Fallback title if still empty
-      if (!finalTitle) {
-        finalTitle = `X post from ${url}`;
+    // Dedupe link-based content by URL.
+    if (url) {
+      const { data: existing } = await supabase
+        .from('content')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('original_link', url)
+        .limit(1);
+      if (existing && existing.length > 0) {
+        return NextResponse.json({ error: 'This link is already saved' }, { status: 409 });
       }
     }
 
-    if ((type === "website" || type === "youtube" || type === "reddit") && !finalContent.trim() && url) {
+    if (!finalContent.trim() && url) {
       finalContent = url;
-      finalTitle = title || `${type.charAt(0).toUpperCase() + type.slice(1)} content`;
     }
-
     if (!finalContent.trim()) {
-      return NextResponse.json({ error: "Missing content" }, { status: 400 });
+      return NextResponse.json({ error: 'Missing content' }, { status: 400 });
     }
 
-    // Process content with Gemini AI
+    // AI enrichment: summary + tags.
     let summary = '';
     let tags: string[] = [];
-    let aiProcessedContent = finalContent;
-
+    let processedContent = finalContent;
     try {
       const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
-      
-      // Generate summary and tags using Gemini
-      const analysisPrompt = `
-        Analyze the following content and provide:
-        1. A brief summary (2-3 sentences)
-        2. 5 relevant tags/keywords
-        3. Extract key information and insights
-        
-        Content Type: ${type}
-        Title: ${finalTitle}
-        Content: ${finalContent}
-        
-        Format your response as JSON:
-        {
-          "summary": "Brief summary here",
-          "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"],
-          "insights": "Key insights and important information extracted"
-        }
-      `;
+      const prompt = `Analyze the following content and respond with JSON only:
+{"summary":"2-3 sentence summary","tags":["tag1","tag2","tag3","tag4","tag5"],"insights":"key insights"}
 
-      const result = await model.generateContent(analysisPrompt);
-      const response = await result.response;
-      const text = response.text();
-      
-      try {
-        // Clean the response to extract JSON
-        const jsonMatch = text.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          const parsed = JSON.parse(jsonMatch[0]);
-          summary = parsed.summary || finalContent.substring(0, 200) + '...';
-          
-          // Filter out unwanted AI/LLM related tags
-          const rawTags = parsed.tags || ['general'];
-          const unwantedTags = ['ai', 'llm', 'artificial intelligence', 'machine learning', 'generated', 'automated', 'bot'];
-          tags = rawTags.filter((tag: string) => 
-            !unwantedTags.some(unwanted => 
-              tag.toLowerCase().includes(unwanted)
-            )
-          );
-          
-          // Ensure we have at least one tag
-          if (tags.length === 0) {
-            tags = ['general'];
-          }
-          
-          aiProcessedContent = parsed.insights || finalContent;
-        }
-      } catch (parseError) {
-        console.error('JSON parsing error:', parseError);
-        // Fallback processing
-        summary = finalContent.substring(0, 200) + '...';
-        tags = [type, 'content'];
+Type: ${type}
+Title: ${finalTitle}
+Content: ${finalContent}`;
+      const result = await model.generateContent(prompt);
+      const text = result.response.text();
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        summary = parsed.summary || finalContent.substring(0, 200);
+        tags = Array.isArray(parsed.tags) && parsed.tags.length ? parsed.tags : [type];
+        processedContent = parsed.insights || finalContent;
       }
-
     } catch (aiError) {
-      console.error('AI processing error:', aiError);
-      // Fallback processing without AI
-      summary = finalContent.substring(0, 200) + '...';
-      tags = [type, 'saved'];
+      console.warn('AI enrichment failed, using fallback:', aiError);
+      summary = finalContent.substring(0, 200);
+      tags = [type];
     }
 
-    const contentId = uuidv4();
-    const timestamp = new Date().toISOString();
+    if (!finalTitle) {
+      finalTitle = finalContent.substring(0, 60) || `${type} content`;
+    }
 
-    // Store in Firebase with AI-processed data and external API data
-    const contentRef = collection(db, 'content');
-    
-    // Create the base document data
-    const docData: any = {
-      title: finalTitle,
-      content: finalContent,
-      processedContent: aiProcessedContent,
-      summary,
-      tags,
-      originalLink: url || "",
-      url: url || "",
-      type,
-      userId,
-      contentId,
-      timestamp,
-      metadata: metadata || {},
-      externalData: externalData || null,
-      createdAt: new Date(),
-      aiProcessed: true,
-      // Add specific fields for display
-      thumbnail: externalData?.thumbnails?.medium?.url || externalData?.thumbnail || externalData?.preview || null,
-      author: externalData?.author || externalData?.channelTitle || null,
-      platform: externalData ? (type === 'tweet' || type === 'x' ? 'X' : type === 'reddit' ? 'Reddit' : type === 'youtube' ? 'YouTube' : null) : null,
-      metrics: {
-        likes: externalData?.like_count || externalData?.likeCount || 0,
-        views: externalData?.viewCount || 0,
-        comments: externalData?.num_comments || externalData?.commentCount || 0,
-        score: externalData?.score || 0
-      }
-    };
+    const platform =
+      type === 'tweet' || type === 'x'
+        ? 'X'
+        : type === 'reddit'
+        ? 'Reddit'
+        : type === 'youtube'
+        ? 'YouTube'
+        : null;
 
-    // Add structured postData for X/Twitter posts
+    const authorObj = externalData?.author as Record<string, unknown> | undefined;
+    const rowMetadata: Record<string, unknown> = { ...(metadata || {}) };
     if ((type === 'tweet' || type === 'x') && externalData) {
-      docData.tweetData = {
+      rowMetadata.tweetData = {
         id: externalData.id,
         text: externalData.text,
-        username: externalData.author?.name || 'X User',
-        handle: externalData.author?.username || 'x_user',
+        username: authorObj?.name || 'X User',
+        handle: authorObj?.username || 'x_user',
         timestamp: externalData.created_at || new Date().toISOString(),
-        metrics: {
-          likes: externalData.public_metrics?.like_count || 0,
-          retweets: externalData.public_metrics?.repost_count || 0,
-          replies: externalData.public_metrics?.reply_count || 0,
-          views: externalData.public_metrics?.view_count || 0
-        },
-        images: externalData.attachments?.media_keys || [],
-        url: url || ""
+        metrics: externalData.public_metrics || {},
+        url: url || '',
       };
     }
 
-    const docRef = await addDoc(contentRef, docData);
+    const insertRow = {
+      user_id: userId,
+      type,
+      title: finalTitle,
+      content: finalContent,
+      processed_content: processedContent,
+      summary,
+      tags,
+      original_link: url || null,
+      url: url || null,
+      author: (authorObj?.name as string) || (externalData?.channelTitle as string) || null,
+      platform,
+      thumbnail:
+        (externalData?.thumbnails as Record<string, Record<string, string>>)?.medium?.url ||
+        (externalData?.thumbnail as string) ||
+        null,
+      metadata: rowMetadata,
+      external_data: externalData,
+      metrics: {
+        likes: externalData?.like_count || (externalData?.public_metrics as Record<string, number>)?.like_count || 0,
+        views: externalData?.viewCount || 0,
+        comments: externalData?.num_comments || externalData?.commentCount || 0,
+        score: externalData?.score || 0,
+      },
+    };
 
-    // TODO: Store embeddings in vector database (Pinecone, etc.)
-    // const embeddings = await generateEmbeddings(aiProcessedContent);
-    // await storeInVectorDB(contentId, embeddings, {title, content: aiProcessedContent, tags});
+    const { data: inserted, error: insertError } = await supabase
+      .from('content')
+      .insert(insertRow)
+      .select('*')
+      .single();
+    if (insertError) throw insertError;
 
-    // Update user stats (increment content count)
-    try {
-      const userStatsRef = doc(db, 'userStats', userId);
-      const userStatsDoc = await getDoc(userStatsRef);
-      
-      let currentStats = {
-        totalContent: 0,
-        aiQueries: 0,
-        timeSavedHours: '0.0',
-        favorites: 0
-      };
-
-      if (userStatsDoc.exists()) {
-        currentStats = { ...currentStats, ...userStatsDoc.data() };
-      }
-
-      // Increment content count and add time saved
-      currentStats.totalContent = (currentStats.totalContent || 0) + 1;
-      const currentMinutes = parseFloat(currentStats.timeSavedHours) * 60;
-      currentStats.timeSavedHours = ((currentMinutes + 7) / 60).toFixed(1);
-
-      await setDoc(userStatsRef, {
-        ...currentStats,
-        updatedAt: new Date().toISOString()
-      }, { merge: true });
-    } catch (statsError) {
-      console.warn('Failed to update stats:', statsError);
-    }
-
-    return NextResponse.json({ 
-      success: true,
-      message: "Content stored and processed successfully", 
-      data: {
-        id: docRef.id,
-        contentId,
-        title: finalTitle,
-        summary,
-        tags,
-        type
-      }
-    }, { status: 201 });
+    return NextResponse.json(
+      { success: true, message: 'Content saved', data: rowToContent(inserted) },
+      { status: 201 }
+    );
   } catch (error) {
     console.error('Content creation error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 
-// Delete content
+// ---------------------------------------------------------------------------
+// DELETE: remove content by id (body: { contentId })
+// ---------------------------------------------------------------------------
 export async function DELETE(req: NextRequest) {
   try {
     const userId = await getUserId();
-    
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const { contentId } = await req.json();
-    
     if (!contentId) {
-      return NextResponse.json({ error: "contentId is required" }, { status: 400 });
+      return NextResponse.json({ error: 'contentId is required' }, { status: 400 });
     }
 
-    // Find and delete the content document
-    const contentRef = collection(db, 'content');
-    const q = query(
-      contentRef,
-      where('contentId', '==', contentId),
-      where('userId', '==', userId)
-    );
-    
-    const snapshot = await getDocs(q);
-    if (snapshot.empty) {
-      return NextResponse.json({ 
-        error: "Content not found or already deleted" 
-      }, { status: 404 });
+    const supabase = await createClient();
+    const { data: deleted, error } = await supabase
+      .from('content')
+      .delete()
+      .eq('id', contentId)
+      .eq('user_id', userId)
+      .select('id');
+    if (error) throw error;
+
+    if (!deleted || deleted.length === 0) {
+      return NextResponse.json({ error: 'Content not found' }, { status: 404 });
     }
 
-    // Delete the document
-    const docToDelete = snapshot.docs[0];
-    await deleteDoc(docToDelete.ref);
-    
-    return NextResponse.json({ message: "Deleted successfully" });
+    return NextResponse.json({ message: 'Deleted successfully' });
   } catch (error) {
     console.error('Content deletion error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
