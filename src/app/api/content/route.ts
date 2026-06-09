@@ -7,7 +7,6 @@ import { rowToContent } from '@/lib/content';
 export const dynamic = 'force-dynamic';
 
 const genAI = new GoogleGenerativeAI(process.env.NEXT_PUBLIC_GEMINI_API_KEY || '');
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
 const VALID_TYPES = ['note', 'tweet', 'x', 'document', 'website', 'image', 'youtube', 'reddit', 'text'];
 
@@ -94,7 +93,10 @@ export async function POST(req: NextRequest) {
         }
 
         if (endpoint) {
-          const response = await fetch(`${APP_URL}${endpoint}`, {
+          // Derive the base URL from the incoming request so internal calls
+          // work in any environment (localhost, Vercel, custom domain).
+          const origin = req.nextUrl.origin;
+          const response = await fetch(`${origin}${endpoint}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ url }),
