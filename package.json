@@ -9,11 +9,12 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "@clerk/nextjs": "^6.39.5",
     "@google/generative-ai": "^0.24.1",
     "@react-pdf-viewer/core": "^3.12.0",
     "@react-pdf-viewer/default-layout": "^3.12.0",
     "@react-pdf-viewer/thumbnail": "^3.12.0",
+    "@supabase/ssr": "^0.12.0",
+    "@supabase/supabase-js": "^2.108.0",
     "@types/canvas-confetti": "^1.9.0",
     "@types/uuid": "^10.0.0",
     "canvas-confetti": "^1.9.3",

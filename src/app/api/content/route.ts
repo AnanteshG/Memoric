@@ -1,7 +1,7 @@
 // src/app/api/content/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
-import { auth } from '@clerk/nextjs/server';
+import { getUserId } from '@/lib/supabase/server';
 import { db } from '@/lib/firebase';
 import { collection, addDoc, query, where, orderBy, getDocs, deleteDoc, doc, getDoc, setDoc } from 'firebase/firestore';
 import { GoogleGenerativeAI } from '@google/generative-ai';
@@ -15,7 +15,7 @@ const genAI = new GoogleGenerativeAI(process.env.NEXT_PUBLIC_GEMINI_API_KEY || '
 // Get all content
 export async function GET(request: NextRequest) {
   try {
-    const { userId } = await auth();
+    const userId = await getUserId();
     
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -86,7 +86,7 @@ export async function GET(request: NextRequest) {
 // Add new content (note, x post, website, document, image, youtube, reddit)
 export async function POST(req: NextRequest) {
   try {
-    const { userId } = await auth();
+    const userId = await getUserId();
     
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -391,7 +391,7 @@ export async function POST(req: NextRequest) {
 // Delete content
 export async function DELETE(req: NextRequest) {
   try {
-    const { userId } = await auth();
+    const userId = await getUserId();
     
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

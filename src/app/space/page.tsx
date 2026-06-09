@@ -1,6 +1,6 @@
 'use client';
 
-import { SignedIn } from '@clerk/nextjs';
+import { SignedIn } from '@/components/auth/supabase-auth';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { DotPattern } from '@/components/ui/dot-pattern';

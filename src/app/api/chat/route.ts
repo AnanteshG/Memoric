@@ -1,6 +1,6 @@
 // src/app/api/chat/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@clerk/nextjs/server';
+import { getUserId } from '@/lib/supabase/server';
 import { generateAnswer } from '@/lib/services/generateAnswer';
 import { db } from '@/lib/firebase';
 import { collection, addDoc, query, where, orderBy, limit, getDocs, doc, getDoc, setDoc } from 'firebase/firestore';
@@ -310,7 +310,7 @@ export async function POST(req: NextRequest) {
   console.log('🔥 Chat API called');
   try {
     console.log('🔐 Attempting auth...');
-    const { userId } = await auth();
+    const userId = await getUserId();
     console.log('✅ Auth result:', { userId });
     
     if (!userId) {

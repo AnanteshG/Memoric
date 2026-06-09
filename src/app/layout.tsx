@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
-import { ClerkProvider } from '@clerk/nextjs';
+import { SupabaseAuthProvider } from '@/components/auth/supabase-auth';
 import "./globals.css";
 
 export const dynamic = 'force-dynamic';
@@ -22,19 +22,12 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <ClerkProvider
-      signInUrl="/auth/sign-in"
-      signUpUrl="/auth/sign-up"
-      afterSignInUrl="/"
-      afterSignUpUrl="/"
-    >
-      <html lang="en">
-        <body
-          className={`${inter.variable} font-sans antialiased`}
-        >
-          {children}
-        </body>
-      </html>
-    </ClerkProvider>
+    <html lang="en">
+      <body
+        className={`${inter.variable} font-sans antialiased`}
+      >
+        <SupabaseAuthProvider>{children}</SupabaseAuthProvider>
+      </body>
+    </html>
   );
 }

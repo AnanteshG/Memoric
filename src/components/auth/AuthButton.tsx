@@ -1,9 +1,9 @@
-import { SignInButton, SignOutButton, useUser } from '@clerk/nextjs';
+import { SignInButton, SignOutButton, useUser } from '@/components/auth/supabase-auth';
 
 export function AuthButton() {
     const { isSignedIn, user } = useUser();
 
-    if (isSignedIn) {
+    if (isSignedIn && user) {
         return (
             <div className="flex items-center gap-4">
                 <span className="text-sm text-gray-600">Hello, {user.firstName}!</span>
