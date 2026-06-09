@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic';
 // Delete content by ID
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { userId } = await auth();
