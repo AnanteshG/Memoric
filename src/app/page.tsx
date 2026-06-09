@@ -1,6 +1,6 @@
 'use client';
 
-import { SignInButton, SignedIn, SignedOut, UserButton, SignOutButton } from '@/components/auth/supabase-auth';
+import { SignInButton, SignedIn, SignedOut, SignOutButton, useUser } from '@/components/auth/supabase-auth';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { DotPattern } from '@/components/ui/dot-pattern';
@@ -210,6 +210,7 @@ SearchInput.displayName = 'SearchInput';
 export default function Home() {
   const router = useRouter();
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const { user } = useUser();
 
   // Redirect authenticated users to /space
   useEffect(() => {
@@ -385,7 +386,14 @@ export default function Home() {
                 onClick={() => setShowUserMenu(!showUserMenu)}
                 className="flex items-center space-x-2 bg-white/10 backdrop-blur-md border border-white/20 rounded-xl px-3 py-2 hover:bg-white/20 transition-all duration-200"
               >
-                <UserButton />
+                {user?.imageUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={user.imageUrl} alt={user.firstName} className="h-8 w-8 rounded-full object-cover" />
+                ) : (
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-violet-600 text-sm font-medium text-white">
+                    {user?.firstName?.charAt(0).toUpperCase() ?? 'U'}
+                  </div>
+                )}
                 <ChevronDown size={16} className="text-white" />
               </button>
 

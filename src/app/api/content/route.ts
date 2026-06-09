@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { createClient, getUserId } from '@/lib/supabase/server';
 import { rowToContent } from '@/lib/content';
+import { embedText, buildEmbeddingInput } from '@/lib/embeddings';
 
 export const dynamic = 'force-dynamic';
 
@@ -192,6 +193,11 @@ Content: ${finalContent}`;
       };
     }
 
+    // Semantic embedding for RAG retrieval (null if it fails — non-blocking).
+    const embedding = await embedText(
+      buildEmbeddingInput({ title: finalTitle, summary, tags, content: processedContent })
+    );
+
     const insertRow = {
       user_id: userId,
       type,
@@ -200,6 +206,7 @@ Content: ${finalContent}`;
       processed_content: processedContent,
       summary,
       tags,
+      embedding,
       original_link: url || null,
       url: url || null,
       author: (authorObj?.name as string) || (externalData?.channelTitle as string) || null,

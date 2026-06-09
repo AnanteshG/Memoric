@@ -3,7 +3,6 @@
 import { SignedIn } from '@/components/auth/supabase-auth';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
-import { DotPattern } from '@/components/ui/dot-pattern';
 import UploadModal from '@/components/pages/UploadModal';
 import { XCard } from '@/components/ui/XCard';
 import { useState, useCallback, useEffect } from 'react';
@@ -13,26 +12,19 @@ import {
     MessageSquare,
     Globe,
     Youtube,
-    Brain,
     Search,
     Grid,
     List,
-    Filter,
     Plus,
     Zap,
     Clock,
     Star,
-    Eye,
     Loader,
     RefreshCw,
     Trash2,
-    Heart,
-    X,
-    MoreHorizontal,
     ExternalLink,
-    Edit3,
-    Repeat2,
     BarChart3,
+    LayoutGrid,
 } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
@@ -57,7 +49,6 @@ interface ContentItem {
         comments: number;
         score: number;
     };
-    // X (formerly Twitter) specific data
     tweetData?: {
         id: string;
         text: string;
@@ -88,7 +79,7 @@ export default function Space() {
         totalContent: 0,
         aiQueries: 0,
         timeSavedHours: '0.0',
-        favorites: 0
+        favorites: 0,
     });
 
     // Fetch user statistics
@@ -105,27 +96,30 @@ export default function Space() {
     }, []);
 
     // Fetch content from API
-    const fetchContent = useCallback(async (refresh = false) => {
-        if (refresh) setIsRefreshing(true);
-        else setIsLoading(true);
+    const fetchContent = useCallback(
+        async (refresh = false) => {
+            if (refresh) setIsRefreshing(true);
+            else setIsLoading(true);
 
-        try {
-            const params = new URLSearchParams();
-            if (selectedCategory !== 'all') params.append('type', selectedCategory);
-            if (searchQuery) params.append('search', searchQuery);
+            try {
+                const params = new URLSearchParams();
+                if (selectedCategory !== 'all') params.append('type', selectedCategory);
+                if (searchQuery) params.append('search', searchQuery);
 
-            const response = await fetch(`/api/content?${params}`);
-            if (response.ok) {
-                const data = await response.json();
-                setContentItems(data.data || []);
+                const response = await fetch(`/api/content?${params}`);
+                if (response.ok) {
+                    const data = await response.json();
+                    setContentItems(data.data || []);
+                }
+            } catch (error) {
+                console.error('Failed to fetch content:', error);
+            } finally {
+                setIsLoading(false);
+                setIsRefreshing(false);
             }
-        } catch (error) {
-            console.error('Failed to fetch content:', error);
-        } finally {
-            setIsLoading(false);
-            setIsRefreshing(false);
-        }
-    }, [selectedCategory, searchQuery]);
+        },
+        [selectedCategory, searchQuery]
+    );
 
     useEffect(() => {
         fetchContent();
@@ -133,103 +127,57 @@ export default function Space() {
     }, [fetchContent, fetchUserStats]);
 
     // Handle successful upload
-    const handleUploadSuccess = useCallback((newContent: any) => {
-        setContentItems(prev => [newContent, ...prev]);
-        fetchContent(true); // Refresh to get the latest data
-        fetchUserStats(); // Refresh stats
-    }, [fetchContent, fetchUserStats]);
+    const handleUploadSuccess = useCallback(
+        (newContent: ContentItem) => {
+            setContentItems((prev) => [newContent, ...prev]);
+            fetchContent(true);
+            fetchUserStats();
+        },
+        [fetchContent, fetchUserStats]
+    );
 
     // Handle delete content
-    const handleDeleteContent = useCallback(async (itemId: string) => {
-        try {
-            const response = await fetch(`/api/content/${itemId}`, {
-                method: 'DELETE',
-            });
-
-            if (response.ok) {
-                // Remove item from local state immediately for instant feedback
-                setContentItems(prev => prev.filter(item => item.id !== itemId));
-                // Refresh stats to reflect the change
-                fetchUserStats();
-            } else {
-                console.error('Failed to delete content');
-                // You might want to show a toast notification here
+    const handleDeleteContent = useCallback(
+        async (itemId: string) => {
+            try {
+                const response = await fetch(`/api/content/${itemId}`, { method: 'DELETE' });
+                if (response.ok) {
+                    setContentItems((prev) => prev.filter((item) => item.id !== itemId));
+                    fetchUserStats();
+                } else {
+                    console.error('Failed to delete content');
+                }
+            } catch (error) {
+                console.error('Error deleting content:', error);
             }
-        } catch (error) {
-            console.error('Error deleting content:', error);
-            // You might want to show an error toast notification here
-        }
-    }, [fetchUserStats]);
+        },
+        [fetchUserStats]
+    );
 
     // Handle opening content
     const handleOpenContent = useCallback((item: ContentItem) => {
-        console.log('🔗 Opening content:', item);
-        console.log('🔗 Content URL:', item.url);
-        console.log('🔗 Content type:', item.type);
-        console.log('🔗 Content title:', item.title);
-
-        // Enhanced content opening logic based on type
-        if (item.type === 'tweet') {
-            // For tweets, construct the Twitter URL or use stored URL
-            const tweetUrl = item.url ||
-                (item.tweetData ? `https://twitter.com/${item.tweetData.handle}/status/${(item as any).tweetId || 'unknown'}` : null);
-
-            if (tweetUrl) {
-                console.log('🐦 Opening tweet URL:', tweetUrl);
-                window.open(tweetUrl, '_blank');
-            } else {
-                console.log('🐦 No tweet URL available');
-                alert(`Tweet "${item.title}" - No original tweet URL available.`);
-            }
-        } else if (item.type === 'youtube') {
-            // For YouTube videos
-            const youtubeUrl = item.url || (item as any).originalLink;
-            if (youtubeUrl) {
-                console.log('� Opening YouTube URL:', youtubeUrl);
-                window.open(youtubeUrl, '_blank');
-            } else {
-                alert(`YouTube video "${item.title}" - No URL available.`);
-            }
-        } else if (item.type === 'reddit') {
-            // For Reddit posts
-            const redditUrl = item.url || (item as any).originalLink;
-            if (redditUrl) {
-                console.log('🔴 Opening Reddit URL:', redditUrl);
-                window.open(redditUrl, '_blank');
-            } else {
-                alert(`Reddit post "${item.title}" - No URL available.`);
-            }
-        } else if (item.url) {
-            // Generic case - if there's a URL, open it
-            console.log('✅ Opening URL in new tab:', item.url);
-            window.open(item.url, '_blank');
-        } else {
-            // For content without URLs (like notes, uploaded documents), 
-            // we could implement a modal or detailed view
-            console.log('❌ No URL found for content. Item data:', item);
-            console.log('📄 Full item object:', JSON.stringify(item, null, 2));
-
-            alert(`Content "${item.title}" clicked! This ${item.type} doesn't have an external URL to open. Check console for full data.`);
+        const link = item.url || (item as unknown as { originalLink?: string }).originalLink;
+        if (link) {
+            window.open(link, '_blank');
         }
     }, []);
 
     const categories = [
-        { id: 'all', name: 'All Content', icon: Grid, count: contentItems.length },
-        { id: 'tweet', name: 'X Posts', icon: MessageSquare, count: contentItems.filter(item => item.type === 'tweet').length },
-        { id: 'reddit', name: 'Reddit', icon: Globe, count: contentItems.filter(item => item.type === 'reddit').length },
-        { id: 'youtube', name: 'YouTube', icon: Youtube, count: contentItems.filter(item => item.type === 'youtube').length },
-        { id: 'image', name: 'Images', icon: ImageIcon, count: contentItems.filter(item => item.type === 'image').length },
-        { id: 'text', name: 'Notes', icon: FileText, count: contentItems.filter(item => item.type === 'text').length }
+        { id: 'all', name: 'All Content', icon: LayoutGrid, count: contentItems.length },
+        { id: 'tweet', name: 'X Posts', icon: MessageSquare, count: contentItems.filter((i) => i.type === 'tweet').length },
+        { id: 'reddit', name: 'Reddit', icon: Globe, count: contentItems.filter((i) => i.type === 'reddit').length },
+        { id: 'youtube', name: 'YouTube', icon: Youtube, count: contentItems.filter((i) => i.type === 'youtube').length },
+        { id: 'image', name: 'Images', icon: ImageIcon, count: contentItems.filter((i) => i.type === 'image').length },
+        { id: 'text', name: 'Notes', icon: FileText, count: contentItems.filter((i) => i.type === 'text').length },
     ];
 
-    const uploadOptions = [];
-
-    const filteredItems = contentItems.filter(item => {
+    const filteredItems = contentItems.filter((item) => {
         const matchesCategory = selectedCategory === 'all' || item.type === selectedCategory;
-        const matchesSearch = searchQuery === '' ||
+        const matchesSearch =
+            searchQuery === '' ||
             item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
             item.content.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            item.tags.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase()));
+            item.tags.some((tag) => tag.toLowerCase().includes(searchQuery.toLowerCase()));
         return matchesCategory && matchesSearch;
     });
 
@@ -249,805 +197,265 @@ export default function Space() {
             case 'tweet': return 'text-sky-400';
             case 'reddit': return 'text-orange-400';
             case 'youtube': return 'text-red-400';
-            case 'image': return 'text-green-400';
-            case 'text': return 'text-purple-400';
-            default: return 'text-gray-400';
+            case 'image': return 'text-emerald-400';
+            case 'text': return 'text-violet-400';
+            default: return 'text-zinc-400';
         }
     };
 
-    const handleUpload = useCallback(() => {
-        setShowUploadModal(true);
-    }, []);
+    const stats = [
+        { label: 'Total Content', value: userStats.totalContent, icon: BarChart3, accent: 'text-violet-400' },
+        { label: 'AI Queries', value: userStats.aiQueries, icon: Zap, accent: 'text-amber-400' },
+        { label: 'Time Saved', value: `${userStats.timeSavedHours}h`, icon: Clock, accent: 'text-emerald-400' },
+        { label: 'Favorites', value: userStats.favorites, icon: Star, accent: 'text-rose-400' },
+    ];
+
+    const activeCategoryName = categories.find((c) => c.id === selectedCategory)?.name ?? 'All Content';
 
     return (
         <SignedIn>
-            <div className="min-h-screen bg-black relative overflow-hidden">
-                {/* Dot Pattern Background */}
-                <DotPattern
-                    width={12}
-                    height={12}
-                    cx={1}
-                    cy={1}
-                    cr={1}
-                    glow={true}
-                    className="text-purple-400/30"
-                />
+            <div className="flex min-h-screen bg-zinc-950 text-zinc-100">
+                {/* ---------- Sidebar ---------- */}
+                <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col border-r border-white/5 bg-black/60 p-4 lg:flex">
+                    <button
+                        onClick={() => router.push('/')}
+                        className="mb-6 flex items-center gap-2.5 px-2"
+                    >
+                        <Image src="/assets/Logo.png" alt="Memoric" width={32} height={32} className="h-8 w-8 object-contain" />
+                        <span className="text-lg font-semibold tracking-tight">Memoric</span>
+                    </button>
 
-                {/* Navigation */}
-                <nav className="relative z-10 flex items-center justify-between p-4 sm:p-6 max-w-7xl mx-auto">
-                    <div className="flex items-center space-x-4">
-                        <button
-                            onClick={() => router.push('/')}
-                            className="flex items-center space-x-2 hover:opacity-80 transition-opacity duration-200"
-                        >
-                            <div className="relative w-10 h-10 sm:w-12 sm:h-12">
-                                <Image
-                                    src="/assets/Logo.png"
-                                    alt="Memoric Logo"
-                                    width={48}
-                                    height={48}
-                                    className="rounded-lg"
-                                />
-                            </div>
-                            <span className="text-white text-lg sm:text-xl font-semibold tracking-tight">Memoric</span>
-                        </button>
-                    </div>
+                    <button
+                        onClick={() => setShowUploadModal(true)}
+                        className="mb-6 flex items-center justify-center gap-2 rounded-lg bg-violet-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-violet-500"
+                    >
+                        <Plus size={16} /> Add content
+                    </button>
 
-                    <div className="flex items-center justify-end">
-                        {/* Removed user menu section */}
-                    </div>
-                </nav>
-
-                {/* Main Content */}
-                <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-20">
-                    {/* Header Section */}
-                    <div className="mb-8">
-                        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
-                            <div>
-                                <h1 className="text-3xl sm:text-4xl font-bold text-white mb-2">
-                                    Your <span className="bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">Knowledge Space</span>
-                                </h1>
-                                <p className="text-gray-400 text-lg">
-                                    Store, organize, and chat with your digital content
-                                </p>
-                            </div>
-
-                            <div className="flex items-center space-x-4">
+                    <nav className="flex flex-col gap-1">
+                        <p className="px-3 pb-1 text-xs font-medium uppercase tracking-wider text-zinc-500">Library</p>
+                        {categories.map((cat) => {
+                            const Icon = cat.icon;
+                            const active = selectedCategory === cat.id;
+                            return (
                                 <button
-                                    onClick={() => fetchContent(true)}
-                                    disabled={isRefreshing}
-                                    className="bg-gray-700/50 text-white px-4 py-2 rounded-lg hover:bg-gray-700/70 transition-all duration-200 flex items-center space-x-2 disabled:opacity-50"
+                                    key={cat.id}
+                                    onClick={() => setSelectedCategory(cat.id)}
+                                    className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition ${
+                                        active
+                                            ? 'bg-white/10 text-white'
+                                            : 'text-zinc-400 hover:bg-white/5 hover:text-zinc-200'
+                                    }`}
                                 >
-                                    <RefreshCw size={16} className={isRefreshing ? 'animate-spin' : ''} />
-                                    <span className="hidden sm:inline">Refresh</span>
+                                    <Icon size={16} className={active ? 'text-violet-400' : ''} />
+                                    <span className="flex-1 text-left">{cat.name}</span>
+                                    <span className="rounded-full bg-white/5 px-2 py-0.5 text-xs text-zinc-400">{cat.count}</span>
                                 </button>
-                                <button
-                                    onClick={() => setShowUploadModal(true)}
-                                    className="bg-gradient-to-r from-purple-600 to-pink-600 text-white px-6 py-3 rounded-xl font-semibold shadow-lg hover:shadow-xl hover:from-purple-700 hover:to-pink-700 transition-all duration-300 transform hover:scale-105 flex items-center space-x-2"
-                                >
-                                    <Plus size={20} />
-                                    <span>Add Content</span>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
+                            );
+                        })}
+                    </nav>
+                </aside>
 
-                    {/* Stats Cards */}
-                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-                        <div className="bg-gradient-to-br from-purple-600/20 to-pink-600/20 rounded-xl p-4 border border-purple-500/30">
-                            <div className="flex items-center space-x-3">
-                                <Brain className="text-purple-400" size={24} />
-                                <div>
-                                    <p className="text-2xl font-bold text-white">{userStats.totalContent}</p>
-                                    <p className="text-gray-400 text-sm">Total Items</p>
-                                </div>
+                {/* ---------- Main ---------- */}
+                <main className="flex-1 overflow-x-hidden">
+                    {/* Top bar */}
+                    <header className="sticky top-0 z-10 border-b border-white/5 bg-zinc-950/80 backdrop-blur">
+                        <div className="flex flex-wrap items-center gap-3 px-5 py-4">
+                            <div className="mr-auto">
+                                <h1 className="text-xl font-semibold tracking-tight">Your Space</h1>
+                                <p className="text-sm text-zinc-500">Store, organize, and chat with your content</p>
                             </div>
-                        </div>
-                        <div className="bg-gradient-to-br from-blue-600/20 to-cyan-600/20 rounded-xl p-4 border border-blue-500/30">
-                            <div className="flex items-center space-x-3">
-                                <Zap className="text-blue-400" size={24} />
-                                <div>
-                                    <p className="text-2xl font-bold text-white">{userStats.aiQueries}</p>
-                                    <p className="text-gray-400 text-sm">AI Queries</p>
-                                </div>
-                            </div>
-                        </div>
-                        <div className="bg-gradient-to-br from-green-600/20 to-emerald-600/20 rounded-xl p-4 border border-green-500/30">
-                            <div className="flex items-center space-x-3">
-                                <Clock className="text-green-400" size={24} />
-                                <div>
-                                    <p className="text-2xl font-bold text-white">{userStats.timeSavedHours}h</p>
-                                    <p className="text-gray-400 text-sm">Time Saved</p>
-                                </div>
-                            </div>
-                        </div>
-                        <div className="bg-gradient-to-br from-orange-600/20 to-red-600/20 rounded-xl p-4 border border-orange-500/30">
-                            <div className="flex items-center space-x-3">
-                                <Star className="text-orange-400" size={24} />
-                                <div>
-                                    <p className="text-2xl font-bold text-white">{userStats.favorites}</p>
-                                    <p className="text-gray-400 text-sm">Favorites</p>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
 
-                    {/* Search and Filters */}
-                    <div className="flex flex-col lg:flex-row gap-4 mb-8">
-                        <div className="flex-1">
                             <div className="relative">
-                                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+                                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
                                 <input
-                                    type="text"
                                     value={searchQuery}
                                     onChange={(e) => setSearchQuery(e.target.value)}
-                                    placeholder="Search your knowledge base..."
-                                    className="w-full bg-gray-900/50 border border-gray-700/50 rounded-xl pl-10 pr-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:border-purple-500/50 transition-colors duration-200"
+                                    placeholder="Search your content..."
+                                    className="w-56 rounded-lg border border-white/10 bg-white/5 py-2 pl-9 pr-3 text-sm text-zinc-100 placeholder-zinc-500 outline-none transition focus:border-violet-500/50 focus:bg-white/10"
                                 />
                             </div>
-                        </div>
 
-                        <div className="flex items-center space-x-4">
-                            <div className="flex bg-gray-900/50 border border-gray-700/50 rounded-xl p-1">
+                            <button
+                                onClick={() => fetchContent(true)}
+                                disabled={isRefreshing}
+                                className="rounded-lg border border-white/10 p-2 text-zinc-400 transition hover:bg-white/5 hover:text-white disabled:opacity-50"
+                                title="Refresh"
+                            >
+                                <RefreshCw size={16} className={isRefreshing ? 'animate-spin' : ''} />
+                            </button>
+
+                            <div className="flex items-center rounded-lg border border-white/10 p-0.5">
                                 <button
                                     onClick={() => setViewMode('grid')}
-                                    className={`p-2 rounded-lg transition-all duration-200 ${viewMode === 'grid' ? 'bg-purple-600 text-white' : 'text-gray-400 hover:text-white'
-                                        }`}
+                                    className={`rounded-md p-1.5 transition ${viewMode === 'grid' ? 'bg-violet-600 text-white' : 'text-zinc-400 hover:text-white'}`}
                                 >
-                                    <Grid size={18} />
+                                    <Grid size={16} />
                                 </button>
                                 <button
                                     onClick={() => setViewMode('list')}
-                                    className={`p-2 rounded-lg transition-all duration-200 ${viewMode === 'list' ? 'bg-purple-600 text-white' : 'text-gray-400 hover:text-white'
-                                        }`}
+                                    className={`rounded-md p-1.5 transition ${viewMode === 'list' ? 'bg-violet-600 text-white' : 'text-zinc-400 hover:text-white'}`}
                                 >
-                                    <List size={18} />
+                                    <List size={16} />
                                 </button>
                             </div>
-                        </div>
-                    </div>
 
-                    {/* Content Layout */}
-                    <div className="flex flex-col lg:flex-row gap-8">
-                        {/* Sidebar Categories */}
-                        <div className="lg:w-64">
-                            <div className="bg-gray-900/50 backdrop-blur-sm border border-gray-700/50 rounded-xl p-6">
-                                <h3 className="text-white font-semibold mb-4 flex items-center space-x-2">
-                                    <Filter size={18} />
-                                    <span>Categories</span>
-                                </h3>
-                                <div className="space-y-2">
-                                    {categories.map((category) => {
-                                        const Icon = category.icon;
-                                        return (
-                                            <button
-                                                key={category.id}
-                                                onClick={() => setSelectedCategory(category.id)}
-                                                className={`w-full flex items-center justify-between p-3 rounded-lg transition-all duration-200 ${selectedCategory === category.id
-                                                    ? 'bg-purple-600/20 text-purple-400 border border-purple-500/30'
-                                                    : 'text-gray-400 hover:text-white hover:bg-white/5'
-                                                    }`}
-                                            >
-                                                <div className="flex items-center space-x-2">
-                                                    <Icon size={16} />
-                                                    <span className="text-sm font-medium">{category.name}</span>
-                                                </div>
-                                                <span className="text-xs bg-gray-700/50 px-2 py-1 rounded-full">
-                                                    {category.count}
-                                                </span>
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                            </div>
+                            <button
+                                onClick={() => setShowUploadModal(true)}
+                                className="flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-violet-500 lg:hidden"
+                            >
+                                <Plus size={16} /> Add
+                            </button>
                         </div>
+                    </header>
 
-                        {/* Content Grid */}
-                        <div className="flex-1">
-                            {isLoading ? (
-                                <div className="text-center py-20">
-                                    <Loader size={48} className="mx-auto mb-4 text-purple-400 animate-spin" />
-                                    <h3 className="text-xl font-semibold text-white mb-2">Loading your content...</h3>
-                                    <p className="text-gray-400">Please wait while we fetch your knowledge base.</p>
-                                </div>
-                            ) : filteredItems.length === 0 ? (
-                                <div className="text-center py-20">
-                                    <div className="text-gray-400 mb-4">
-                                        <Brain size={64} className="mx-auto mb-4 opacity-50" />
-                                        <h3 className="text-xl font-semibold mb-2">
-                                            {searchQuery ? 'No matching content found' : 'No content found'}
-                                        </h3>
-                                        <p>
-                                            {searchQuery
-                                                ? 'Try adjusting your search terms or filters.'
-                                                : 'Start by adding your first piece of content to your knowledge base.'
-                                            }
-                                        </p>
+                    <div className="px-5 py-6">
+                        {/* Stats */}
+                        <div className="mb-8 grid grid-cols-2 gap-3 lg:grid-cols-4">
+                            {stats.map((s) => {
+                                const Icon = s.icon;
+                                return (
+                                    <div
+                                        key={s.label}
+                                        className="rounded-xl border border-white/5 bg-white/[0.03] p-4 transition hover:border-white/10"
+                                    >
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-sm text-zinc-500">{s.label}</span>
+                                            <Icon size={16} className={s.accent} />
+                                        </div>
+                                        <p className="mt-2 text-2xl font-semibold">{s.value}</p>
                                     </div>
-                                    {!searchQuery && (
-                                        <button
-                                            onClick={() => setShowUploadModal(true)}
-                                            className="bg-gradient-to-r from-purple-600 to-pink-600 text-white px-6 py-3 rounded-xl font-semibold shadow-lg hover:shadow-xl hover:from-purple-700 hover:to-pink-700 transition-all duration-300 transform hover:scale-105 flex items-center space-x-2 mx-auto"
-                                        >
-                                            <Plus size={20} />
-                                            <span>Add Your First Content</span>
-                                        </button>
-                                    )}
-                                </div>
-                            ) : (
-                                <div className={`${viewMode === 'grid'
-                                    ? 'grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6'
-                                    : 'space-y-4'
-                                    }`}>
-                                    {filteredItems.map((item) => {
-                                        const TypeIcon = getTypeIcon(item.type);
-                                        const createdAt = new Date(item.createdAt);
-
-                                        // Card Action Menu Component
-                                        const CardActionMenu = ({ item }: { item: ContentItem }) => {
-                                            const [showMenu, setShowMenu] = useState(false);
-
-                                            return (
-                                                <div className="relative">
-                                                    <button
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            setShowMenu(!showMenu);
-                                                        }}
-                                                        className="p-1.5 text-gray-400 hover:text-white rounded-lg hover:bg-white/10 transition-all duration-200"
-                                                    >
-                                                        <MoreHorizontal size={16} />
-                                                    </button>
-                                                    {showMenu && (
-                                                        <div className="absolute right-0 top-8 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-50 min-w-[120px]">
-                                                            <button
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    if (item.url) window.open(item.url, '_blank');
-                                                                    setShowMenu(false);
-                                                                }}
-                                                                className="flex items-center space-x-2 w-full px-3 py-2 text-sm text-gray-300 hover:text-white hover:bg-gray-700 transition-colors duration-200"
-                                                            >
-                                                                <ExternalLink size={14} />
-                                                                <span>Open</span>
-                                                            </button>
-                                                            <button
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    // TODO: Implement edit functionality
-                                                                    setShowMenu(false);
-                                                                }}
-                                                                className="flex items-center space-x-2 w-full px-3 py-2 text-sm text-gray-300 hover:text-white hover:bg-gray-700 transition-colors duration-200"
-                                                            >
-                                                                <Edit3 size={14} />
-                                                                <span>Edit</span>
-                                                            </button>
-                                                            <button
-                                                                onClick={async (e) => {
-                                                                    e.stopPropagation();
-                                                                    setShowMenu(false);
-                                                                    if (confirm('Are you sure you want to delete this content?')) {
-                                                                        await handleDeleteContent(item.id);
-                                                                    }
-                                                                }}
-                                                                className="flex items-center space-x-2 w-full px-3 py-2 text-sm text-red-400 hover:text-red-300 hover:bg-red-900/20 transition-colors duration-200"
-                                                            >
-                                                                <Trash2 size={14} />
-                                                                <span>Delete</span>
-                                                            </button>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            );
-                                        };
-
-                                        // Use the XCard component for tweets
-                                        if (item.type === 'tweet') {
-                                            return (
-                                                <XCard
-                                                    key={item.id}
-                                                    id={item.id}
-                                                    title={item.title}
-                                                    tweetData={item.tweetData}
-                                                    url={item.url}
-                                                    createdAt={item.createdAt}
-                                                    tags={item.tags}
-                                                    onDelete={() => handleDeleteContent(item.id)}
-                                                    onTitleChange={(newTitle) => {
-                                                        // TODO: Implement title update
-                                                        console.log('Update title:', newTitle);
-                                                    }}
-                                                    onClick={() => handleOpenContent(item)}
-                                                />
-                                            );
-                                        }
-
-                                        // YouTube Card Component
-                                        const YouTubeCard = ({ item }: { item: ContentItem }) => (
-                                            <div
-                                                className="bg-gradient-to-br from-red-900/20 to-red-800/20 backdrop-blur-sm border border-red-500/30 rounded-xl hover:border-red-400/50 transition-all duration-300 group cursor-pointer p-6"
-                                                onClick={() => handleOpenContent(item)}
-                                            >
-                                                {/* Header with action menu */}
-                                                <div className="flex items-center justify-between mb-4">
-                                                    <div className="flex items-center space-x-3">
-                                                        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-red-600 to-red-700 flex items-center justify-center">
-                                                            <Youtube size={20} className="text-white" />
-                                                        </div>
-                                                        <div>
-                                                            <h3 className="text-white font-semibold text-sm line-clamp-1">
-                                                                {item.title}
-                                                            </h3>
-                                                            <p className="text-red-300 text-xs">
-                                                                {item.author || 'YouTube'} • Video
-                                                            </p>
-                                                        </div>
-                                                    </div>
-                                                    <CardActionMenu item={item} />
-                                                </div>
-
-                                                {/* Video thumbnail */}
-                                                {item.thumbnail && (
-                                                    <div className="relative w-full h-40 bg-gray-800 rounded-lg mb-4 overflow-hidden group">
-                                                        <Image
-                                                            src={item.thumbnail}
-                                                            alt="Video thumbnail"
-                                                            width={400}
-                                                            height={200}
-                                                            className="w-full h-full object-cover"
-                                                        />
-                                                        {/* Play button overlay */}
-                                                        <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                                                            <div className="w-12 h-12 bg-red-600 rounded-full flex items-center justify-center">
-                                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="white">
-                                                                    <path d="M8 5v14l11-7z" />
-                                                                </svg>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                )}
-
-                                                {/* Video description preview */}
-                                                <div className="mb-4">
-                                                    <p className="text-white text-sm leading-relaxed line-clamp-3">
-                                                        {item.content}
-                                                    </p>
-                                                </div>
-
-                                                {/* Video metrics */}
-                                                {item.metrics && (
-                                                    <div className="flex items-center space-x-4 mb-4 text-xs text-red-300">
-                                                        {item.metrics.views > 0 && (
-                                                            <div className="flex items-center space-x-1">
-                                                                <Eye size={12} />
-                                                                <span>{item.metrics.views.toLocaleString()} views</span>
-                                                            </div>
-                                                        )}
-                                                        {item.metrics.likes > 0 && (
-                                                            <div className="flex items-center space-x-1">
-                                                                <Heart size={12} className="text-red-400" />
-                                                                <span>{item.metrics.likes.toLocaleString()}</span>
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                )}
-
-                                                {/* Tags */}
-                                                {item.tags && item.tags.length > 0 && (
-                                                    <div className="flex flex-wrap gap-1 mb-4">
-                                                        {item.tags.slice(0, 4).map((tag, index) => (
-                                                            <span
-                                                                key={index}
-                                                                className="bg-red-600/20 text-red-300 px-2 py-1 rounded-full text-xs"
-                                                            >
-                                                                #{tag}
-                                                            </span>
-                                                        ))}
-                                                        {item.tags.length > 4 && (
-                                                            <span className="text-red-400 text-xs px-2 py-1">
-                                                                +{item.tags.length - 4} more
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                )}
-
-                                                {/* Footer */}
-                                                <div className="flex items-center justify-between text-xs text-gray-400">
-                                                    <span>{createdAt.toLocaleDateString()}</span>
-                                                    <span className="bg-red-600/20 text-red-300 px-2 py-1 rounded-full">
-                                                        YouTube
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        );
-
-                                        // Reddit Card Component
-                                        const RedditCard = ({ item }: { item: ContentItem }) => (
-                                            <div
-                                                className="bg-gradient-to-br from-orange-900/20 to-orange-800/20 backdrop-blur-sm border border-orange-500/30 rounded-xl hover:border-orange-400/50 transition-all duration-300 group cursor-pointer p-6"
-                                                onClick={() => handleOpenContent(item)}
-                                            >
-                                                {/* Header with action menu */}
-                                                <div className="flex items-center justify-between mb-4">
-                                                    <div className="flex items-center space-x-3">
-                                                        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-600 to-orange-700 flex items-center justify-center">
-                                                            <Globe size={20} className="text-white" />
-                                                        </div>
-                                                        <div>
-                                                            <h3 className="text-white font-semibold text-sm line-clamp-2">
-                                                                {item.title}
-                                                            </h3>
-                                                            <p className="text-orange-300 text-xs">
-                                                                {item.author || 'Reddit'} • r/{item.platform || 'reddit'}
-                                                            </p>
-                                                        </div>
-                                                    </div>
-                                                    <CardActionMenu item={item} />
-                                                </div>
-
-                                                {/* Reddit post content */}
-                                                <div className="mb-4">
-                                                    <p className="text-white text-sm leading-relaxed line-clamp-4">
-                                                        {item.content}
-                                                    </p>
-                                                </div>
-
-                                                {/* Reddit metrics */}
-                                                {item.metrics && (
-                                                    <div className="flex items-center space-x-4 mb-4 text-xs text-orange-300">
-                                                        {item.metrics.score > 0 && (
-                                                            <div className="flex items-center space-x-1">
-                                                                <BarChart3 size={12} />
-                                                                <span>{item.metrics.score} upvotes</span>
-                                                            </div>
-                                                        )}
-                                                        {item.metrics.comments > 0 && (
-                                                            <div className="flex items-center space-x-1">
-                                                                <MessageSquare size={12} />
-                                                                <span>{item.metrics.comments} comments</span>
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                )}
-
-                                                {/* Tags */}
-                                                {item.tags && item.tags.length > 0 && (
-                                                    <div className="flex flex-wrap gap-1 mb-4">
-                                                        {item.tags.slice(0, 4).map((tag, index) => (
-                                                            <span
-                                                                key={index}
-                                                                className="bg-orange-600/20 text-orange-300 px-2 py-1 rounded-full text-xs"
-                                                            >
-                                                                #{tag}
-                                                            </span>
-                                                        ))}
-                                                        {item.tags.length > 4 && (
-                                                            <span className="text-orange-400 text-xs px-2 py-1">
-                                                                +{item.tags.length - 4} more
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                )}
-
-                                                {/* Footer */}
-                                                <div className="flex items-center justify-between text-xs text-gray-400">
-                                                    <span>{createdAt.toLocaleDateString()}</span>
-                                                    <span className="bg-orange-600/20 text-orange-300 px-2 py-1 rounded-full">
-                                                        Reddit
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        );
-
-                                        // Image Card Component
-                                        const ImageCard = ({ item }: { item: ContentItem }) => (
-                                            <div
-                                                className="bg-gradient-to-br from-purple-900/20 to-purple-800/20 backdrop-blur-sm border border-purple-500/30 rounded-xl hover:border-purple-400/50 transition-all duration-300 group cursor-pointer p-6"
-                                                onClick={() => handleOpenContent(item)}
-                                            >
-                                                {/* Header with action menu */}
-                                                <div className="flex items-center justify-between mb-4">
-                                                    <div className="flex items-center space-x-3">
-                                                        <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-purple-600 to-purple-700 flex items-center justify-center">
-                                                            <ImageIcon size={20} className="text-white" />
-                                                        </div>
-                                                        <div>
-                                                            <h3 className="text-white font-semibold text-sm line-clamp-1">
-                                                                {item.title}
-                                                            </h3>
-                                                            <p className="text-purple-300 text-xs">
-                                                                Image • {item.size || 'Unknown size'}
-                                                            </p>
-                                                        </div>
-                                                    </div>
-                                                    <CardActionMenu item={item} />
-                                                </div>
-
-                                                {/* Image preview */}
-                                                {item.thumbnail && (
-                                                    <div className="w-full h-48 bg-gray-800 rounded-lg mb-4 overflow-hidden">
-                                                        <Image
-                                                            src={item.thumbnail}
-                                                            alt="Image preview"
-                                                            width={400}
-                                                            height={300}
-                                                            className="w-full h-full object-cover"
-                                                        />
-                                                    </div>
-                                                )}
-
-                                                {/* Tags */}
-                                                {item.tags && item.tags.length > 0 && (
-                                                    <div className="flex flex-wrap gap-1 mb-4">
-                                                        {item.tags.slice(0, 4).map((tag, index) => (
-                                                            <span
-                                                                key={index}
-                                                                className="bg-purple-600/20 text-purple-300 px-2 py-1 rounded-full text-xs"
-                                                            >
-                                                                #{tag}
-                                                            </span>
-                                                        ))}
-                                                        {item.tags.length > 4 && (
-                                                            <span className="text-purple-400 text-xs px-2 py-1">
-                                                                +{item.tags.length - 4} more
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                )}
-
-                                                {/* Footer */}
-                                                <div className="flex items-center justify-between text-xs text-gray-400">
-                                                    <span>{createdAt.toLocaleDateString()}</span>
-                                                    <span className="bg-purple-600/20 text-purple-300 px-2 py-1 rounded-full">
-                                                        Image
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        );
-
-                                        // Text/Note Card Component
-                                        const TextCard = ({ item }: { item: ContentItem }) => (
-                                            <div
-                                                className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl hover:border-indigo-400/50 hover:shadow-2xl hover:shadow-indigo-500/10 transition-all duration-300 group cursor-pointer overflow-hidden"
-                                                onClick={() => handleOpenContent(item)}
-                                            >
-                                                {/* Header */}
-                                                <div className="p-6 pb-4">
-                                                    <div className="flex items-start justify-between mb-4">
-                                                        <div className="flex items-center space-x-3">
-                                                            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center flex-shrink-0">
-                                                                <FileText size={16} className="text-white" />
-                                                            </div>
-                                                            <div className="min-w-0 flex-1">
-                                                                <h3 className="text-white font-medium text-sm line-clamp-1">
-                                                                    {item.title}
-                                                                </h3>
-                                                                <p className="text-indigo-300 text-xs mt-1">
-                                                                    {item.content.length} characters
-                                                                </p>
-                                                            </div>
-                                                        </div>
-                                                        <CardActionMenu item={item} />
-                                                    </div>
-
-                                                    {/* Text Content Preview */}
-                                                    <div className="bg-indigo-500/5 border border-indigo-500/20 rounded-xl p-4 mb-4">
-                                                        <div className="flex items-center space-x-2 mb-3">
-                                                            <MessageSquare size={14} className="text-indigo-400" />
-                                                            <span className="text-indigo-300 text-xs font-medium">Note Content</span>
-                                                        </div>
-                                                        <div className="text-gray-200 text-sm leading-relaxed line-clamp-6">
-                                                            {item.content}
-                                                        </div>
-                                                    </div>
-
-                                                    {/* Tags */}
-                                                    {item.tags && item.tags.length > 0 && (
-                                                        <div className="flex flex-wrap gap-1.5 mb-4">
-                                                            {item.tags.slice(0, 3).map((tag, index) => (
-                                                                <span
-                                                                    key={index}
-                                                                    className="bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 px-2.5 py-1 rounded-full text-xs font-medium"
-                                                                >
-                                                                    {tag}
-                                                                </span>
-                                                            ))}
-                                                            {item.tags.length > 3 && (
-                                                                <span className="text-indigo-400/60 text-xs px-2 py-1 font-medium">
-                                                                    +{item.tags.length - 3}
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                    )}
-                                                </div>
-
-                                                {/* Footer */}
-                                                <div className="px-6 py-3 bg-indigo-500/5 border-t border-indigo-500/10 flex items-center justify-between text-xs">
-                                                    <span className="text-gray-400">{createdAt.toLocaleDateString()}</span>
-                                                    <span className="bg-indigo-500/20 text-indigo-300 px-2 py-1 rounded-full font-medium">
-                                                        Text Note
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        );
-
-                                        // Default Card Component
-                                        const DefaultCard = ({ item }: { item: ContentItem }) => (
-                                            <div
-                                                className={`bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl hover:border-purple-400/50 hover:shadow-2xl hover:shadow-purple-500/10 transition-all duration-300 group cursor-pointer overflow-hidden ${viewMode === 'grid' ? '' : 'flex items-center'
-                                                    }`}
-                                                onClick={() => handleOpenContent(item)}
-                                            >
-                                                {viewMode === 'grid' ? (
-                                                    <>
-                                                        {/* Header */}
-                                                        <div className="p-6 pb-4">
-                                                            <div className="flex items-start justify-between mb-4">
-                                                                <div className="flex items-center space-x-3">
-                                                                    <div className={`w-10 h-10 rounded-xl bg-gradient-to-br from-gray-700 to-gray-800 flex items-center justify-center flex-shrink-0 ${getTypeColor(item.type)}`}>
-                                                                        <TypeIcon size={16} />
-                                                                    </div>
-                                                                    <div className="min-w-0 flex-1">
-                                                                        <h3 className="text-white font-medium text-sm line-clamp-2 leading-5">
-                                                                            {item.title}
-                                                                        </h3>
-                                                                        <div className="flex items-center space-x-2 mt-1">
-                                                                            {item.platform && (
-                                                                                <span className="bg-purple-500/20 text-purple-300 px-1.5 py-0.5 rounded text-xs font-medium">
-                                                                                    {item.platform}
-                                                                                </span>
-                                                                            )}
-                                                                            {item.author && (
-                                                                                <span className="text-gray-400 text-xs">
-                                                                                    {item.author}
-                                                                                </span>
-                                                                            )}
-                                                                        </div>
-                                                                    </div>
-                                                                </div>
-                                                                <CardActionMenu item={item} />
-                                                            </div>
-
-                                                            {/* Thumbnail */}
-                                                            {item.thumbnail && (
-                                                                <div className="w-full h-40 bg-gray-800/50 rounded-xl mb-4 overflow-hidden">
-                                                                    <Image
-                                                                        src={item.thumbnail}
-                                                                        alt={item.title}
-                                                                        width={400}
-                                                                        height={200}
-                                                                        className="w-full h-full object-cover"
-                                                                    />
-                                                                </div>
-                                                            )}
-
-                                                            {/* Content Preview */}
-                                                            <div className="bg-gray-500/5 border border-gray-500/20 rounded-xl p-4 mb-4">
-                                                                <div className="flex items-center space-x-2 mb-3">
-                                                                    <Eye size={14} className="text-gray-400" />
-                                                                    <span className="text-gray-300 text-xs font-medium">Content Preview</span>
-                                                                </div>
-                                                                <div className="text-gray-200 text-sm leading-relaxed line-clamp-4">
-                                                                    {item.content.length > 200
-                                                                        ? `${item.content.substring(0, 200)}...`
-                                                                        : item.content
-                                                                    }
-                                                                </div>
-                                                            </div>
-
-                                                            {/* External Data Metrics */}
-                                                            {item.metrics && (item.metrics.likes > 0 || item.metrics.views > 0 || item.metrics.comments > 0) && (
-                                                                <div className="flex items-center space-x-4 mb-4 text-xs text-gray-400">
-                                                                    {item.metrics.views > 0 && (
-                                                                        <div className="flex items-center space-x-1">
-                                                                            <Eye size={12} />
-                                                                            <span>{item.metrics.views.toLocaleString()}</span>
-                                                                        </div>
-                                                                    )}
-                                                                    {item.metrics.likes > 0 && (
-                                                                        <div className="flex items-center space-x-1">
-                                                                            <Heart size={12} className="text-pink-400" />
-                                                                            <span>{item.metrics.likes.toLocaleString()}</span>
-                                                                        </div>
-                                                                    )}
-                                                                    {item.metrics.comments > 0 && (
-                                                                        <div className="flex items-center space-x-1">
-                                                                            <MessageSquare size={12} />
-                                                                            <span>{item.metrics.comments.toLocaleString()}</span>
-                                                                        </div>
-                                                                    )}
-                                                                    {item.metrics.score > 0 && (
-                                                                        <div className="flex items-center space-x-1">
-                                                                            <Star size={12} />
-                                                                            <span>{item.metrics.score}</span>
-                                                                        </div>
-                                                                    )}
-                                                                </div>
-                                                            )}
-
-                                                            {/* Tags */}
-                                                            {(item.tags || []).length > 0 && (
-                                                                <div className="flex flex-wrap gap-1.5 mb-4">
-                                                                    {(item.tags || []).slice(0, 3).map((tag, index) => (
-                                                                        <span
-                                                                            key={index}
-                                                                            className="bg-purple-500/10 border border-purple-500/20 text-purple-400 px-2.5 py-1 rounded-full text-xs font-medium"
-                                                                        >
-                                                                            {tag}
-                                                                        </span>
-                                                                    ))}
-                                                                    {(item.tags || []).length > 3 && (
-                                                                        <span className="text-purple-400/60 text-xs px-2 py-1 font-medium">
-                                                                            +{(item.tags || []).length - 3}
-                                                                        </span>
-                                                                    )}
-                                                                </div>
-                                                            )}
-                                                        </div>
-
-                                                        {/* Footer */}
-                                                        <div className="px-6 py-3 bg-gray-500/5 border-t border-gray-500/10 flex items-center justify-between text-xs">
-                                                            <span className="text-gray-400">{createdAt.toLocaleDateString()}</span>
-                                                            {item.size && <span className="text-gray-400">{item.size}</span>}
-                                                        </div>
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        <div className="p-4 flex items-center space-x-4 w-full">
-                                                            <div className={`p-3 rounded-xl ${getTypeColor(item.type)} bg-gray-700/50`}>
-                                                                <TypeIcon size={24} />
-                                                            </div>
-                                                            <div className="flex-1 min-w-0">
-                                                                <h3 className="text-white font-medium mb-1 line-clamp-1">{item.title}</h3>
-                                                                <p className="text-gray-400 text-sm mb-2 line-clamp-1">{item.content}</p>
-                                                                <div className="flex items-center space-x-4 text-xs text-gray-500">
-                                                                    <span>{createdAt.toLocaleDateString()}</span>
-                                                                    {item.size && <span>{item.size}</span>}
-                                                                    <div className="flex space-x-1">
-                                                                        {(item.tags || []).slice(0, 2).map((tag, index) => (
-                                                                            <span key={index} className="bg-purple-600/20 text-purple-300 px-2 py-1 rounded-full">
-                                                                                {tag}
-                                                                            </span>
-                                                                        ))}
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-                                                            <CardActionMenu item={item} />
-                                                        </div>
-                                                    </>
-                                                )}
-                                            </div>
-                                        );
-
-                                        // Render the appropriate card type
-                                        return (
-                                            <div key={item.id}>
-                                                {item.type === 'youtube' ? (
-                                                    <YouTubeCard item={item} />
-                                                ) : item.type === 'reddit' ? (
-                                                    <RedditCard item={item} />
-                                                ) : item.type === 'image' ? (
-                                                    <ImageCard item={item} />
-                                                ) : item.type === 'text' ? (
-                                                    <TextCard item={item} />
-                                                ) : (
-                                                    <DefaultCard item={item} />
-                                                )}
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            )}
+                                );
+                            })}
                         </div>
-                    </div>
-                </div>
 
-                {/* Upload Modal */}
+                        {/* Content header */}
+                        <div className="mb-4 flex items-center gap-2">
+                            <h2 className="text-lg font-semibold">{activeCategoryName}</h2>
+                            <span className="rounded-full bg-white/5 px-2 py-0.5 text-xs text-zinc-400">{filteredItems.length}</span>
+                        </div>
+
+                        {/* States */}
+                        {isLoading ? (
+                            <div className="flex flex-col items-center justify-center py-24 text-zinc-500">
+                                <Loader className="mb-3 animate-spin" size={28} />
+                                <p>Loading your content...</p>
+                            </div>
+                        ) : filteredItems.length === 0 ? (
+                            <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-white/10 py-24 text-center">
+                                <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-white/5">
+                                    <Plus className="text-violet-400" size={24} />
+                                </div>
+                                <h3 className="text-lg font-medium">Nothing here yet</h3>
+                                <p className="mt-1 max-w-sm text-sm text-zinc-500">
+                                    {searchQuery
+                                        ? 'No content matches your search.'
+                                        : 'Save your first link, note, or post to start building your second brain.'}
+                                </p>
+                                <button
+                                    onClick={() => setShowUploadModal(true)}
+                                    className="mt-5 flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-violet-500"
+                                >
+                                    <Plus size={16} /> Add content
+                                </button>
+                            </div>
+                        ) : (
+                            <div
+                                className={
+                                    viewMode === 'grid'
+                                        ? 'grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3'
+                                        : 'flex flex-col gap-3'
+                                }
+                            >
+                                {filteredItems.map((item) => {
+                                    if (item.type === 'tweet') {
+                                        return (
+                                            <XCard
+                                                key={item.id}
+                                                id={item.id}
+                                                title={item.title}
+                                                tweetData={item.tweetData}
+                                                url={item.url}
+                                                createdAt={item.createdAt}
+                                                tags={item.tags}
+                                                onDelete={() => handleDeleteContent(item.id)}
+                                                onTitleChange={() => {}}
+                                                onClick={() => handleOpenContent(item)}
+                                            />
+                                        );
+                                    }
+
+                                    const TypeIcon = getTypeIcon(item.type);
+                                    return (
+                                        <article
+                                            key={item.id}
+                                            onClick={() => handleOpenContent(item)}
+                                            className="group relative flex cursor-pointer flex-col overflow-hidden rounded-xl border border-white/5 bg-white/[0.03] p-4 transition hover:border-white/15 hover:bg-white/[0.06]"
+                                        >
+                                            {item.thumbnail && (
+                                                // eslint-disable-next-line @next/next/no-img-element
+                                                <img
+                                                    src={item.thumbnail}
+                                                    alt={item.title}
+                                                    className="mb-3 h-36 w-full rounded-lg object-cover"
+                                                />
+                                            )}
+
+                                            <div className="mb-2 flex items-center gap-2">
+                                                <span className={`flex items-center gap-1.5 rounded-md bg-white/5 px-2 py-1 text-xs ${getTypeColor(item.type)}`}>
+                                                    <TypeIcon size={12} />
+                                                    {item.platform || item.type}
+                                                </span>
+                                                <span className="ml-auto text-xs text-zinc-500">
+                                                    {new Date(item.createdAt).toLocaleDateString()}
+                                                </span>
+                                            </div>
+
+                                            <h3 className="line-clamp-2 font-semibold text-zinc-100">{item.title}</h3>
+                                            {(item.summary || item.content) && (
+                                                <p className="mt-1 line-clamp-3 text-sm text-zinc-400">
+                                                    {item.summary || item.content}
+                                                </p>
+                                            )}
+
+                                            {item.tags?.length > 0 && (
+                                                <div className="mt-3 flex flex-wrap gap-1.5">
+                                                    {item.tags.slice(0, 3).map((tag, i) => (
+                                                        <span key={i} className="rounded-md bg-white/5 px-2 py-0.5 text-xs text-zinc-400">
+                                                            #{tag}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            )}
+
+                                            <div className="mt-4 flex items-center gap-2 pt-3">
+                                                {item.url && (
+                                                    <span className="flex items-center gap-1 text-xs text-zinc-500">
+                                                        <ExternalLink size={12} /> Open
+                                                    </span>
+                                                )}
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleDeleteContent(item.id);
+                                                    }}
+                                                    className="ml-auto rounded-md p-1.5 text-zinc-500 opacity-0 transition hover:bg-rose-500/10 hover:text-rose-400 group-hover:opacity-100"
+                                                    title="Delete"
+                                                >
+                                                    <Trash2 size={14} />
+                                                </button>
+                                            </div>
+                                        </article>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+                </main>
+
                 <UploadModal
                     isOpen={showUploadModal}
-                    onClose={() => {
-                        setShowUploadModal(false);
-                    }}
+                    onClose={() => setShowUploadModal(false)}
                     onSuccess={handleUploadSuccess}
                 />
             </div>

@@ -1,21 +1,45 @@
 // src/app/api/chat/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenerativeAI, TaskType } from '@google/generative-ai';
 import { createClient, getUserId } from '@/lib/supabase/server';
+import { embedText } from '@/lib/embeddings';
 
 export const dynamic = 'force-dynamic';
 
 const genAI = new GoogleGenerativeAI(process.env.NEXT_PUBLIC_GEMINI_API_KEY || '');
 
 type ChatTurn = { message: string; response: string };
+type Hit = {
+  id: string;
+  title: string | null;
+  content: string | null;
+  summary: string | null;
+  type: string | null;
+  url: string | null;
+};
 
-// NOTE: transitional keyword search over Postgres. This is replaced by
-// pgvector semantic retrieval (match_content RPC) in the RAG step.
-async function searchUserContent(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  userId: string,
-  message: string
-) {
+type Supa = Awaited<ReturnType<typeof createClient>>;
+
+// Semantic retrieval via pgvector (match_content RPC). Returns [] if the query
+// can't be embedded or no rows have embeddings yet.
+async function semanticSearch(supabase: Supa, message: string): Promise<Hit[]> {
+  const queryEmbedding = await embedText(message, TaskType.RETRIEVAL_QUERY);
+  if (!queryEmbedding) return [];
+
+  const { data, error } = await supabase.rpc('match_content', {
+    query_embedding: queryEmbedding,
+    match_count: 10,
+  });
+  if (error) {
+    console.warn('Vector search failed, falling back to keyword:', error.message);
+    return [];
+  }
+  return (data ?? []) as Hit[];
+}
+
+// Keyword fallback over Postgres (for items without embeddings, or if vector
+// search returns nothing).
+async function keywordSearch(supabase: Supa, userId: string, message: string): Promise<Hit[]> {
   const terms = message
     .toLowerCase()
     .split(/\s+/)
@@ -30,7 +54,7 @@ async function searchUserContent(
 
   let query = supabase
     .from('content')
-    .select('id, title, content, summary, processed_content, type, url, tags, author, platform')
+    .select('id, title, content, summary, type, url')
     .eq('user_id', userId)
     .order('created_at', { ascending: false })
     .limit(10);
@@ -39,10 +63,17 @@ async function searchUserContent(
 
   const { data, error } = await query;
   if (error) {
-    console.warn('Content search failed:', error.message);
+    console.warn('Keyword search failed:', error.message);
     return [];
   }
-  return data ?? [];
+  return (data ?? []) as Hit[];
+}
+
+// Retrieve relevant content: semantic first, keyword as fallback.
+async function retrieveContent(supabase: Supa, userId: string, message: string): Promise<Hit[]> {
+  const semantic = await semanticSearch(supabase, message);
+  if (semantic.length > 0) return semantic;
+  return keywordSearch(supabase, userId, message);
 }
 
 export async function POST(req: NextRequest) {
@@ -70,8 +101,8 @@ export async function POST(req: NextRequest) {
     const { data: historyRows } = await historyQuery;
     const chatHistory: ChatTurn[] = (historyRows ?? []).reverse();
 
-    // Relevant content.
-    const relevant = await searchUserContent(supabase, userId, message);
+    // Relevant content (semantic with keyword fallback).
+    const relevant = await retrieveContent(supabase, userId, message);
 
     // Build context.
     let contextText = '';
