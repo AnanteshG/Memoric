@@ -130,6 +130,9 @@ export default function Space() {
             setContentItems((prev) => [newContent as ContentItem, ...prev]);
             fetchContent(true);
             fetchUserStats();
+            // AI summary + tags are generated in the background after the save;
+            // refresh once more to pull them in.
+            setTimeout(() => fetchContent(true), 8000);
         },
         [fetchContent, fetchUserStats]
     );

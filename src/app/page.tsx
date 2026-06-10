@@ -16,7 +16,7 @@ export const dynamic = 'force-dynamic';
 /* ------------------------------------------------------------------ */
 const AskBar = memo(() => {
   const [prompt, setPrompt] = useState('');
-  const [messages, setMessages] = useState<Array<{ id: string; role: 'user' | 'assistant'; text: string }>>([]);
+  const [messages, setMessages] = useState<Array<{ id: string; role: 'user' | 'assistant'; text: string; sources?: Array<{ title: string }> }>>([]);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
@@ -35,10 +35,18 @@ const AskBar = memo(() => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: text }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
+      let reply: string;
+      if (res.ok && data.answer) {
+        reply = data.answer;
+      } else if (res.status === 401) {
+        reply = 'Sign in to ask your own library.';
+      } else {
+        reply = data.error ? `Something went wrong: ${data.error}` : 'Something went wrong. Try again.';
+      }
       setMessages((m) => [
         ...m,
-        { id: `${Date.now() + 1}`, role: 'assistant', text: data.answer || 'Sign in to ask your own library.' },
+        { id: `${Date.now() + 1}`, role: 'assistant', text: reply, sources: res.ok ? data.sources : undefined },
       ]);
     } catch {
       setMessages((m) => [...m, { id: `${Date.now() + 1}`, role: 'assistant', text: 'Something went wrong. Try again.' }]);
@@ -67,7 +75,16 @@ const AskBar = memo(() => {
                   m.role === 'user' ? 'ml-auto bg-brand-yellow' : 'bg-white'
                 }`}
               >
-                {m.text}
+                <span className="whitespace-pre-wrap">{m.text}</span>
+                {m.sources && m.sources.length > 0 && (
+                  <span className="mt-1.5 flex flex-wrap gap-1">
+                    {m.sources.slice(0, 3).map((s, i) => (
+                      <span key={i} className="border border-ink/30 bg-paper px-1.5 py-0.5 text-[11px] font-bold text-ink/60">
+                        📌 {s.title}
+                      </span>
+                    ))}
+                  </span>
+                )}
               </div>
             ))}
             {loading && <div className="w-fit border-2 border-ink bg-white px-3 py-2 text-sm shadow-hard-sm">thinking…</div>}
@@ -103,10 +120,10 @@ function XPostCard() {
   return (
     <div className="w-[270px] bg-white p-3.5 text-left">
       <div className="flex items-start gap-2.5">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-2 border-ink bg-brand-blue text-sm font-black text-white">N</div>
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-2 border-ink bg-brand-blue text-sm font-black text-white">A</div>
         <div className="min-w-0 leading-tight">
-          <p className="truncate text-[15px] font-extrabold">Naval</p>
-          <p className="text-[13px] text-ink/45">@naval · 2h</p>
+          <p className="truncate text-[15px] font-extrabold">Anantesh G</p>
+          <p className="text-[13px] text-ink/45">@AnanteshG · 2h</p>
         </div>
         <svg viewBox="0 0 24 24" className="ml-auto h-5 w-5 shrink-0 fill-ink"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
       </div>
@@ -326,7 +343,7 @@ export default function Home() {
 
       {/* Footer CTA */}
       <footer className="border-t-[3px] border-ink bg-brand-yellow">
-        <div className="mx-auto flex max-w-6xl flex-col items-center gap-5 px-4 py-14 text-center sm:px-6">
+        <div className="mx-auto flex max-w-6xl flex-col items-center gap-5 px-4 pt-14 pb-8 text-center sm:px-6">
           <h2 className="text-4xl font-extrabold tracking-tight sm:text-5xl">Your brain, but it actually remembers.</h2>
           <SignedOut>
             <SignInButton>
@@ -344,6 +361,16 @@ export default function Home() {
             </button>
           </SignedIn>
           <p className="font-hand text-2xl text-ink/60">made for people with too many tabs</p>
+        </div>
+        <div className="mx-auto flex max-w-6xl justify-end px-4 pb-5 sm:px-6">
+          <a
+            href="https://anantesh.in"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-sm font-bold text-ink/50 transition hover:text-ink hover:underline"
+          >
+            made by Anantesh ↗
+          </a>
         </div>
       </footer>
     </div>

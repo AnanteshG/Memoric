@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
         author: {
           name: tweetData.username,
           username: tweetData.handle,
-          profile_image_url: `https://unavatar.io/twitter/${tweetData.handle}`
+          profile_image_url: tweetData.avatar || `https://unavatar.io/twitter/${tweetData.handle}`
         },
         created_at: tweetData.timestamp,
         public_metrics: {
@@ -50,6 +50,7 @@ export async function POST(req: NextRequest) {
           hashtags: [],
           urls: [{ expanded_url: tweetData.url }]
         },
+        images: tweetData.images || [],
         attachments: {
           media_keys: tweetData.images || []
         }

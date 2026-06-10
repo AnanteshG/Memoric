@@ -2,7 +2,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenerativeAI, TaskType } from '@google/generative-ai';
 import { createClient, getUserId } from '@/lib/supabase/server';
-import { embedText } from '@/lib/embeddings';
+import { embedText, buildEmbeddingInput } from '@/lib/embeddings';
+import { buildAuthorPrefixedContent } from '@/lib/enrich';
 
 export const dynamic = 'force-dynamic';
 
@@ -76,6 +77,43 @@ async function retrieveContent(supabase: Supa, userId: string, message: string):
   return keywordSearch(supabase, userId, message);
 }
 
+// Embeddings are generated in the background after a save; if any didn't make
+// it (server restart, transient API failure), embed them now so retrieval
+// covers every saved item. Capped per request to keep chat latency bounded.
+async function backfillMissingEmbeddings(supabase: Supa, userId: string): Promise<void> {
+  const { data: rows, error } = await supabase
+    .from('content')
+    .select('id, title, summary, tags, content, processed_content, metadata')
+    .eq('user_id', userId)
+    .is('embedding', null)
+    .limit(10);
+  if (error || !rows?.length) return;
+
+  await Promise.all(
+    rows.map(async (row) => {
+      const tweetData = (row.metadata as Record<string, unknown> | null)?.tweetData as
+        | { username?: string; handle?: string }
+        | undefined;
+      const embedding = await embedText(
+        buildEmbeddingInput({
+          title: row.title,
+          summary: row.summary,
+          tags: row.tags,
+          content: buildAuthorPrefixedContent(
+            tweetData?.username,
+            tweetData?.handle,
+            row.content || '',
+            row.processed_content || ''
+          ),
+        })
+      );
+      if (embedding) {
+        await supabase.from('content').update({ embedding }).eq('id', row.id).eq('user_id', userId);
+      }
+    })
+  );
+}
+
 export async function POST(req: NextRequest) {
   try {
     const userId = await getUserId();
@@ -101,7 +139,8 @@ export async function POST(req: NextRequest) {
     const { data: historyRows } = await historyQuery;
     const chatHistory: ChatTurn[] = (historyRows ?? []).reverse();
 
-    // Relevant content (semantic with keyword fallback).
+    // Make sure every saved item is in the vector index, then retrieve.
+    await backfillMissingEmbeddings(supabase, userId);
     const relevant = await retrieveContent(supabase, userId, message);
 
     // Build context.
@@ -142,7 +181,7 @@ ${
     : `Note: ${relevant.length} relevant document(s) are available above.`
 }`;
 
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
     const result = await model.generateContent(prompt);
     const answer = result.response.text();
 

@@ -1,13 +1,11 @@
 // src/app/api/content/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { GoogleGenerativeAI } from '@google/generative-ai';
-import { createClient, getUserId } from '@/lib/supabase/server';
+import { after } from 'next/server';
+import { createClient, createAdminClient, getUserId } from '@/lib/supabase/server';
 import { rowToContent } from '@/lib/content';
-import { embedText, buildEmbeddingInput } from '@/lib/embeddings';
+import { enrichAndEmbed } from '@/lib/enrich';
 
 export const dynamic = 'force-dynamic';
-
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 
 const VALID_TYPES = ['note', 'tweet', 'x', 'document', 'website', 'image', 'youtube', 'reddit', 'text'];
 
@@ -61,6 +59,11 @@ export async function GET(request: NextRequest) {
 
 // ---------------------------------------------------------------------------
 // POST: create content (note / link / etc.)
+//
+// The row is inserted and returned immediately; AI enrichment (summary, tags,
+// insights) and the RAG embedding run in the background via `after()` so the
+// save feels instant. The chat route lazily backfills any embedding that
+// didn't make it (e.g. server restarted mid-task).
 // ---------------------------------------------------------------------------
 export async function POST(req: NextRequest) {
   try {
@@ -76,6 +79,19 @@ export async function POST(req: NextRequest) {
     }
 
     const supabase = await createClient();
+
+    // Dedupe link-based content by URL before any slow work.
+    if (url) {
+      const { data: existing } = await supabase
+        .from('content')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('original_link', url)
+        .limit(1);
+      if (existing && existing.length > 0) {
+        return NextResponse.json({ error: 'This link is already saved' }, { status: 409 });
+      }
+    }
 
     let finalContent = content || '';
     let finalTitle = title || '';
@@ -106,29 +122,25 @@ export async function POST(req: NextRequest) {
             const result = await response.json();
             externalData = result.data;
             finalTitle = finalTitle || (externalData?.title as string) || '';
-            finalContent =
-              finalContent ||
-              (externalData?.text as string) ||
-              (externalData?.selftext as string) ||
-              (externalData?.description as string) ||
-              '';
+
+            // The fetched post text is the content; a user-typed note is
+            // appended rather than replacing it. A "note" that is just the
+            // URL echoed back (old client behavior) is ignored.
+            const externalText =
+              ((externalData?.text as string) ||
+                (externalData?.selftext as string) ||
+                (externalData?.description as string) ||
+                '').trim();
+            const userNote = finalContent.trim();
+            const noteIsJustUrl = userNote === String(url).trim();
+            if (externalText) {
+              finalContent =
+                userNote && !noteIsJustUrl ? `${externalText}\n\nMy note: ${userNote}` : externalText;
+            }
           }
         }
       } catch (externalError) {
         console.warn('External fetch failed, using user content:', externalError);
-      }
-    }
-
-    // Dedupe link-based content by URL.
-    if (url) {
-      const { data: existing } = await supabase
-        .from('content')
-        .select('id')
-        .eq('user_id', userId)
-        .eq('original_link', url)
-        .limit(1);
-      if (existing && existing.length > 0) {
-        return NextResponse.json({ error: 'This link is already saved' }, { status: 409 });
       }
     }
 
@@ -139,35 +151,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing content' }, { status: 400 });
     }
 
-    // AI enrichment: summary + tags.
-    let summary = '';
-    let tags: string[] = [];
-    let processedContent = finalContent;
-    try {
-      const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
-      const prompt = `Analyze the following content and respond with JSON only:
-{"summary":"2-3 sentence summary","tags":["tag1","tag2","tag3","tag4","tag5"],"insights":"key insights"}
-
-Type: ${type}
-Title: ${finalTitle}
-Content: ${finalContent}`;
-      const result = await model.generateContent(prompt);
-      const text = result.response.text();
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]);
-        summary = parsed.summary || finalContent.substring(0, 200);
-        tags = Array.isArray(parsed.tags) && parsed.tags.length ? parsed.tags : [type];
-        processedContent = parsed.insights || finalContent;
-      }
-    } catch (aiError) {
-      console.warn('AI enrichment failed, using fallback:', aiError);
-      summary = finalContent.substring(0, 200);
-      tags = [type];
-    }
+    const isTweet = type === 'tweet' || type === 'x';
+    const authorObj = externalData?.author as Record<string, unknown> | undefined;
 
     if (!finalTitle) {
-      finalTitle = finalContent.substring(0, 60) || `${type} content`;
+      finalTitle =
+        isTweet && authorObj?.name
+          ? `${authorObj.name} (@${authorObj.username}) on X`
+          : finalContent.substring(0, 60) || `${type} content`;
     }
 
     const platform =
@@ -179,34 +170,39 @@ Content: ${finalContent}`;
         ? 'YouTube'
         : null;
 
-    const authorObj = externalData?.author as Record<string, unknown> | undefined;
+    const publicMetrics = (externalData?.public_metrics ?? {}) as Record<string, number>;
+    const tweetImages = (externalData?.images as string[] | undefined) ?? [];
     const rowMetadata: Record<string, unknown> = { ...(metadata || {}) };
-    if ((type === 'tweet' || type === 'x') && externalData) {
+    if (isTweet && externalData) {
+      // Normalized to the shape XCard renders: metrics.{likes,retweets,replies,views}.
       rowMetadata.tweetData = {
         id: externalData.id,
         text: externalData.text,
         username: authorObj?.name || 'X User',
         handle: authorObj?.username || 'x_user',
+        avatar: authorObj?.profile_image_url || null,
         timestamp: externalData.created_at || new Date().toISOString(),
-        metrics: externalData.public_metrics || {},
+        metrics: {
+          likes: publicMetrics.like_count ?? 0,
+          retweets: publicMetrics.repost_count ?? 0,
+          replies: publicMetrics.reply_count ?? 0,
+          views: publicMetrics.view_count ?? 0,
+        },
+        images: tweetImages,
         url: url || '',
       };
     }
-
-    // Semantic embedding for RAG retrieval (null if it fails, non-blocking).
-    const embedding = await embedText(
-      buildEmbeddingInput({ title: finalTitle, summary, tags, content: processedContent })
-    );
 
     const insertRow = {
       user_id: userId,
       type,
       title: finalTitle,
       content: finalContent,
-      processed_content: processedContent,
-      summary,
-      tags,
-      embedding,
+      // Placeholder values; the background enrichment below fills these in.
+      processed_content: finalContent,
+      summary: '',
+      tags: [type],
+      embedding: null,
       original_link: url || null,
       url: url || null,
       author: (authorObj?.name as string) || (externalData?.channelTitle as string) || null,
@@ -214,13 +210,14 @@ Content: ${finalContent}`;
       thumbnail:
         (externalData?.thumbnails as Record<string, Record<string, string>>)?.medium?.url ||
         (externalData?.thumbnail as string) ||
+        tweetImages[0] ||
         null,
       metadata: rowMetadata,
       external_data: externalData,
       metrics: {
-        likes: externalData?.like_count || (externalData?.public_metrics as Record<string, number>)?.like_count || 0,
-        views: externalData?.viewCount || 0,
-        comments: externalData?.num_comments || externalData?.commentCount || 0,
+        likes: externalData?.like_count || publicMetrics.like_count || 0,
+        views: externalData?.viewCount || publicMetrics.view_count || 0,
+        comments: externalData?.num_comments || externalData?.commentCount || publicMetrics.reply_count || 0,
         score: externalData?.score || 0,
       },
     };
@@ -231,6 +228,29 @@ Content: ${finalContent}`;
       .select('*')
       .single();
     if (insertError) throw insertError;
+
+    // AI enrichment + embedding after the response is sent. Uses the
+    // service-role client because the request's auth cookies are gone by then.
+    after(async () => {
+      try {
+        const { summary, tags, processedContent, embedding } = await enrichAndEmbed({
+          type,
+          title: finalTitle,
+          content: finalContent,
+          authorName: isTweet ? ((authorObj?.name as string) ?? null) : null,
+          authorHandle: isTweet ? ((authorObj?.username as string) ?? null) : null,
+        });
+        const admin = createAdminClient();
+        const { error: updateError } = await admin
+          .from('content')
+          .update({ summary, tags, processed_content: processedContent, embedding })
+          .eq('id', inserted.id)
+          .eq('user_id', userId);
+        if (updateError) throw updateError;
+      } catch (error) {
+        console.warn('Background enrichment failed for', inserted.id, error);
+      }
+    });
 
     return NextResponse.json(
       { success: true, message: 'Content saved', data: rowToContent(inserted) },

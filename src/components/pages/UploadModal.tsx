@@ -57,8 +57,10 @@ export default function UploadModal({ type: initialType, isOpen, onClose, onSucc
                 finalTitle = finalTitle || file.name;
             }
 
+            // For link types the server fetches the real post content; only
+            // send what the user actually typed as their own note.
             if (url && (selectedType === 'tweet' || selectedType === 'reddit' || selectedType === 'youtube')) {
-                finalContent = content || url;
+                finalContent = content;
             }
 
             const response = await fetch('/api/content', {

@@ -1,5 +1,17 @@
 import { createServerClient } from '@supabase/ssr';
+import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
+
+// Service-role client for background work that runs after the response is
+// sent, where cookie-based auth is no longer available. Bypasses RLS — every
+// query MUST filter by user_id explicitly.
+export function createAdminClient() {
+  return createSupabaseClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { autoRefreshToken: false, persistSession: false } }
+  );
+}
 
 // Server-side Supabase client (App Router). Reads/writes the session cookie so
 // RLS policies see the authenticated user via auth.uid().
