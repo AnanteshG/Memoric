@@ -285,7 +285,7 @@ export function XCard({
             <div className="flex items-center justify-between border-t-2 border-ink/10 bg-paper px-3.5 py-2 text-[11px] font-bold text-ink/40">
                 <span>{new Date(createdAt).toLocaleDateString()}</span>
                 <span className="flex items-center gap-1">
-                    <XLogo className="h-3 w-3 fill-ink/40" /> X post
+                    <XLogo className="h-3 w-3 fill-ink/40" /> post
                 </span>
             </div>
         </div>

@@ -17,7 +17,24 @@ type Hit = {
   summary: string | null;
   type: string | null;
   url: string | null;
+  similarity?: number;
 };
+
+// Cosine-similarity floor for a hit to count as an actual match; below this
+// the item is unrelated and would only pad the sources list.
+const MIN_SIMILARITY = 0.45;
+
+// The chat bubble renders plain text, so markdown the model emits despite the
+// prompt instruction would show as literal ** and # characters.
+function stripMarkdown(text: string): string {
+  return text
+    .replace(/\*\*([^*]+)\*\*/g, '$1') // **bold**
+    .replace(/(^|\s)\*([^*\n]+)\*(?=\s|[.,!?]|$)/g, '$1$2') // *italic*
+    .replace(/^\s*[*-]\s+/gm, '• ') // bullet lists
+    .replace(/^#{1,6}\s+/gm, '') // headers
+    .replace(/`([^`]+)`/g, '$1') // inline code
+    .trim();
+}
 
 type Supa = Awaited<ReturnType<typeof createClient>>;
 
@@ -35,7 +52,9 @@ async function semanticSearch(supabase: Supa, message: string): Promise<Hit[]> {
     console.warn('Vector search failed, falling back to keyword:', error.message);
     return [];
   }
-  return (data ?? []) as Hit[];
+  return ((data ?? []) as Hit[]).filter(
+    (hit) => hit.similarity === undefined || hit.similarity >= MIN_SIMILARITY
+  );
 }
 
 // Keyword fallback over Postgres (for items without embeddings, or if vector
@@ -151,7 +170,9 @@ export async function POST(req: NextRequest) {
         contextText += `\n${i + 1}. ${item.title || 'Untitled'} (${item.type || 'unknown'})\n`;
         if (item.summary) contextText += `   Summary: ${item.summary}\n`;
         if (item.content) {
-          contextText += `   Content: ${item.content.substring(0, 800)}${item.content.length > 800 ? '...' : ''}\n`;
+          // Generous slice so long-form content (READMEs, articles) actually
+          // reaches the model, not just its first paragraph.
+          contextText += `   Content: ${item.content.substring(0, 2000)}${item.content.length > 2000 ? '...' : ''}\n`;
         }
         if (item.url) contextText += `   Source: ${item.url}\n`;
       });
@@ -175,6 +196,7 @@ Instructions:
 1. Use the knowledge base content above when relevant, and cite which sources you used.
 2. If nothing relevant is found, say so clearly and answer generally.
 3. Be conversational and concise.
+4. Respond in plain text only — no markdown. Never use asterisks, backticks, or # headers. For lists, start lines with "• ".
 ${
   relevant.length === 0
     ? 'Note: no relevant documents were found for this query.'
@@ -183,7 +205,7 @@ ${
 
     const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
     const result = await model.generateContent(prompt);
-    const answer = result.response.text();
+    const answer = stripMarkdown(result.response.text());
 
     // Persist the turn.
     await supabase.from('chats').insert({
@@ -195,7 +217,12 @@ ${
 
     return NextResponse.json({
       answer,
-      sources: relevant.map((item) => ({ title: item.title || 'Untitled', type: item.type, id: item.id })),
+      sources: relevant.map((item) => ({
+        title: item.title || 'Untitled',
+        type: item.type,
+        id: item.id,
+        url: item.url || null,
+      })),
       timestamp: new Date().toISOString(),
     });
   } catch (error) {

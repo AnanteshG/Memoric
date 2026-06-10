@@ -16,10 +16,10 @@ export const dynamic = 'force-dynamic';
 /* ------------------------------------------------------------------ */
 const AskBar = memo(() => {
   const [prompt, setPrompt] = useState('');
-  const [messages, setMessages] = useState<Array<{ id: string; role: 'user' | 'assistant'; text: string; sources?: Array<{ title: string }> }>>([]);
+  const [messages, setMessages] = useState<Array<{ id: string; role: 'user' | 'assistant'; text: string; sources?: Array<{ title: string; url?: string | null }> }>>([]);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
-  const endRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -55,14 +55,16 @@ const AskBar = memo(() => {
     }
   };
 
+  // Scroll only the chat panel itself; scrollIntoView would scroll the page.
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+    const el = listRef.current;
+    if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+  }, [messages, loading]);
 
   return (
     <div className="relative w-full">
       {open && messages.length > 0 && (
-        <div className="absolute bottom-full left-0 right-0 z-40 mb-3 max-h-80 overflow-y-auto border-[3px] border-ink bg-paper p-3 shadow-hard-lg">
+        <div ref={listRef} className="absolute bottom-full left-0 right-0 z-40 mb-3 max-h-80 overflow-y-auto border-[3px] border-ink bg-paper p-3 shadow-hard-lg">
           <div className="mb-2 flex items-center justify-between">
             <span className="font-hand text-2xl text-brand-coral">your knowledge, answered</span>
             <button onClick={() => setOpen(false)} className="border-2 border-ink bg-white p-0.5 shadow-hard-sm"><X size={14} /></button>
@@ -78,17 +80,28 @@ const AskBar = memo(() => {
                 <span className="whitespace-pre-wrap">{m.text}</span>
                 {m.sources && m.sources.length > 0 && (
                   <span className="mt-1.5 flex flex-wrap gap-1">
-                    {m.sources.slice(0, 3).map((s, i) => (
-                      <span key={i} className="border border-ink/30 bg-paper px-1.5 py-0.5 text-[11px] font-bold text-ink/60">
-                        📌 {s.title}
-                      </span>
-                    ))}
+                    {m.sources.map((s, i) =>
+                      s.url ? (
+                        <a
+                          key={i}
+                          href={s.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="border border-ink/30 bg-paper px-1.5 py-0.5 text-[11px] font-bold text-ink/60 transition hover:border-ink hover:text-ink hover:underline"
+                        >
+                          📌 {s.title} ↗
+                        </a>
+                      ) : (
+                        <span key={i} className="border border-ink/30 bg-paper px-1.5 py-0.5 text-[11px] font-bold text-ink/60">
+                          📌 {s.title}
+                        </span>
+                      )
+                    )}
                   </span>
                 )}
               </div>
             ))}
             {loading && <div className="w-fit border-2 border-ink bg-white px-3 py-2 text-sm shadow-hard-sm">thinking…</div>}
-            <div ref={endRef} />
           </div>
         </div>
       )}

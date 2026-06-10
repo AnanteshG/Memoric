@@ -2,9 +2,10 @@
 
 import { useState } from 'react';
 import {
-    Upload, FileText, AlertCircle, Loader,
-    Image as ImageIcon, MessageSquare, Youtube, Globe, X,
+    Upload, FileText, AlertCircle, Loader, Link as LinkIcon,
+    Image as ImageIcon, MessageSquare, Youtube, Globe, Github, X,
 } from 'lucide-react';
+import { detectContentTypeFromUrl, TYPE_LABELS, type DetectedType } from '@/lib/contentType';
 
 interface UploadModalProps {
     type?: string;
@@ -13,24 +14,28 @@ interface UploadModalProps {
     onSuccess?: (data: unknown) => void;
 }
 
-const CONTENT_TYPES = [
+const MODES = [
+    { id: 'link', label: 'Link', icon: LinkIcon, color: 'bg-brand-blue text-white' },
     { id: 'text', label: 'Note', icon: FileText, color: 'bg-brand-yellow' },
-    { id: 'tweet', label: 'X post', icon: MessageSquare, color: 'bg-brand-blue text-white' },
-    { id: 'reddit', label: 'Reddit', icon: Globe, color: 'bg-brand-orange text-white' },
-    { id: 'youtube', label: 'YouTube', icon: Youtube, color: 'bg-brand-coral text-white' },
     { id: 'image', label: 'Image', icon: ImageIcon, color: 'bg-brand-green text-white' },
 ];
 
-const TYPE_CONFIG: Record<string, { heading: string; placeholder: string; showFile?: boolean; showUrl?: boolean; urlPlaceholder?: string; acceptedFiles?: string }> = {
+const MODE_CONFIG: Record<string, { heading: string; placeholder: string; showFile?: boolean; showUrl?: boolean; acceptedFiles?: string }> = {
+    link: { heading: 'Pin a link', placeholder: 'Add your own notes (optional)…', showUrl: true },
     text: { heading: 'Write a note', placeholder: 'Write your note here…' },
-    tweet: { heading: 'Pin an X post', placeholder: 'Add your own notes (optional)…', showUrl: true, urlPlaceholder: 'https://x.com/…' },
-    reddit: { heading: 'Pin a Reddit post', placeholder: 'Add your own notes (optional)…', showUrl: true, urlPlaceholder: 'https://reddit.com/r/…' },
-    youtube: { heading: 'Pin a YouTube video', placeholder: 'Add your own notes (optional)…', showUrl: true, urlPlaceholder: 'https://youtube.com/watch?v=…' },
     image: { heading: 'Pin an image', placeholder: 'Describe this image…', showFile: true, acceptedFiles: '.jpg,.jpeg,.png,.gif,.webp' },
 };
 
+const DETECTED_BADGE: Record<DetectedType, { icon: typeof Globe; className: string }> = {
+    tweet: { icon: MessageSquare, className: 'bg-brand-blue text-white' },
+    reddit: { icon: Globe, className: 'bg-brand-orange text-white' },
+    youtube: { icon: Youtube, className: 'bg-brand-coral text-white' },
+    github: { icon: Github, className: 'bg-ink text-white' },
+    website: { icon: Globe, className: 'bg-brand-purple text-white' },
+};
+
 export default function UploadModal({ type: initialType, isOpen, onClose, onSuccess }: UploadModalProps) {
-    const [selectedType, setSelectedType] = useState(initialType || 'text');
+    const [mode, setMode] = useState(initialType === 'text' || initialType === 'image' ? initialType : 'link');
     const [content, setContent] = useState('');
     const [title, setTitle] = useState('');
     const [url, setUrl] = useState('');
@@ -41,7 +46,8 @@ export default function UploadModal({ type: initialType, isOpen, onClose, onSucc
 
     if (!isOpen) return null;
 
-    const config = TYPE_CONFIG[selectedType] ?? TYPE_CONFIG.text;
+    const config = MODE_CONFIG[mode] ?? MODE_CONFIG.link;
+    const detected = mode === 'link' && url.trim() ? detectContentTypeFromUrl(url) : null;
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -49,28 +55,27 @@ export default function UploadModal({ type: initialType, isOpen, onClose, onSucc
         setError('');
 
         try {
+            if (mode === 'link' && !detected) {
+                throw new Error('Paste a valid link (https://…)');
+            }
+
             let finalContent = content;
             let finalTitle = title;
 
-            if (file && selectedType === 'image') {
+            if (file && mode === 'image') {
                 finalContent = finalContent || file.name;
                 finalTitle = finalTitle || file.name;
-            }
-
-            // For link types the server fetches the real post content; only
-            // send what the user actually typed as their own note.
-            if (url && (selectedType === 'tweet' || selectedType === 'reddit' || selectedType === 'youtube')) {
-                finalContent = content;
             }
 
             const response = await fetch('/api/content', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    type: selectedType,
+                    // The server re-detects from the URL; this is just a hint.
+                    type: mode === 'link' ? detected : mode,
                     content: finalContent,
                     title: finalTitle,
-                    url: url || undefined,
+                    url: mode === 'link' ? url : undefined,
                     metadata: {
                         fileName: file?.name,
                         fileSize: file?.size,
@@ -108,8 +113,8 @@ export default function UploadModal({ type: initialType, isOpen, onClose, onSucc
         onClose();
     };
 
-    const switchType = (id: string) => {
-        setSelectedType(id);
+    const switchMode = (id: string) => {
+        setMode(id);
         setContent('');
         setTitle('');
         setUrl('');
@@ -143,16 +148,16 @@ export default function UploadModal({ type: initialType, isOpen, onClose, onSucc
                             </button>
                         </div>
 
-                        {/* Type chips */}
+                        {/* Mode chips */}
                         <div className="mb-5 flex flex-wrap gap-2">
-                            {CONTENT_TYPES.map((t) => {
+                            {MODES.map((t) => {
                                 const Icon = t.icon;
-                                const active = selectedType === t.id;
+                                const active = mode === t.id;
                                 return (
                                     <button
                                         key={t.id}
                                         type="button"
-                                        onClick={() => switchType(t.id)}
+                                        onClick={() => switchMode(t.id)}
                                         disabled={isLoading}
                                         className={`flex items-center gap-1.5 border-2 border-ink px-3 py-1.5 text-sm font-bold transition hover:-translate-y-0.5 ${
                                             active ? `${t.color} shadow-hard-sm -translate-y-0.5` : 'bg-white'
@@ -166,7 +171,37 @@ export default function UploadModal({ type: initialType, isOpen, onClose, onSucc
                         </div>
 
                         <form onSubmit={handleSubmit} className="space-y-4">
-                            {selectedType !== 'tweet' && (
+                            {config.showUrl && (
+                                <div>
+                                    <label className="mb-1.5 block text-sm font-extrabold uppercase tracking-wide">Link</label>
+                                    <input
+                                        type="url"
+                                        value={url}
+                                        onChange={(e) => setUrl(e.target.value)}
+                                        placeholder="Paste any link — X, Reddit, YouTube, GitHub, articles…"
+                                        className="w-full border-[3px] border-ink bg-white px-3 py-2 font-medium shadow-hard-sm outline-none placeholder:text-ink/35 focus:-translate-y-0.5 focus:shadow-hard transition"
+                                        disabled={isLoading}
+                                        required
+                                        autoFocus
+                                    />
+                                    {detected && (
+                                        <div className="mt-2 flex items-center gap-2">
+                                            <span className="font-hand text-lg text-ink/50">detected:</span>
+                                            {(() => {
+                                                const badge = DETECTED_BADGE[detected];
+                                                const Icon = badge.icon;
+                                                return (
+                                                    <span className={`flex items-center gap-1.5 border-2 border-ink px-2 py-0.5 text-xs font-extrabold shadow-hard-sm ${badge.className}`}>
+                                                        <Icon size={12} /> {TYPE_LABELS[detected]}
+                                                    </span>
+                                                );
+                                            })()}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {mode !== 'link' && (
                                 <div>
                                     <label className="mb-1.5 block text-sm font-extrabold uppercase tracking-wide">Title</label>
                                     <input
@@ -176,21 +211,6 @@ export default function UploadModal({ type: initialType, isOpen, onClose, onSucc
                                         placeholder="Give it a title…"
                                         className="w-full border-[3px] border-ink bg-white px-3 py-2 font-medium shadow-hard-sm outline-none placeholder:text-ink/35 focus:-translate-y-0.5 focus:shadow-hard transition"
                                         disabled={isLoading}
-                                    />
-                                </div>
-                            )}
-
-                            {config.showUrl && (
-                                <div>
-                                    <label className="mb-1.5 block text-sm font-extrabold uppercase tracking-wide">Link</label>
-                                    <input
-                                        type="url"
-                                        value={url}
-                                        onChange={(e) => setUrl(e.target.value)}
-                                        placeholder={config.urlPlaceholder}
-                                        className="w-full border-[3px] border-ink bg-white px-3 py-2 font-medium shadow-hard-sm outline-none placeholder:text-ink/35 focus:-translate-y-0.5 focus:shadow-hard transition"
-                                        disabled={isLoading}
-                                        required={selectedType !== 'text'}
                                     />
                                 </div>
                             )}
@@ -219,16 +239,16 @@ export default function UploadModal({ type: initialType, isOpen, onClose, onSucc
 
                             <div>
                                 <label className="mb-1.5 block text-sm font-extrabold uppercase tracking-wide">
-                                    {selectedType === 'text' ? 'Note' : 'Notes'}
+                                    {mode === 'text' ? 'Note' : 'Notes (optional)'}
                                 </label>
                                 <textarea
                                     value={content}
                                     onChange={(e) => setContent(e.target.value)}
                                     placeholder={config.placeholder}
-                                    rows={5}
+                                    rows={mode === 'link' ? 3 : 5}
                                     className="w-full resize-none border-[3px] border-ink bg-white px-3 py-2 font-medium shadow-hard-sm outline-none placeholder:text-ink/35 focus:-translate-y-0.5 focus:shadow-hard transition"
                                     disabled={isLoading}
-                                    required={selectedType === 'text' && !file}
+                                    required={mode === 'text' && !file}
                                 />
                             </div>
 
@@ -250,7 +270,7 @@ export default function UploadModal({ type: initialType, isOpen, onClose, onSucc
                                 </button>
                                 <button
                                     type="submit"
-                                    disabled={isLoading || (!content && !file && !url)}
+                                    disabled={isLoading || (mode === 'link' ? !detected : !content && !file)}
                                     className="flex items-center gap-2 border-[3px] border-ink bg-brand-coral px-6 py-2.5 font-extrabold text-white shadow-hard transition hover:-translate-x-0.5 hover:-translate-y-0.5 disabled:opacity-40"
                                 >
                                     {isLoading && <Loader size={16} className="animate-spin" />}

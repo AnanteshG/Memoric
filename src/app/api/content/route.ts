@@ -4,10 +4,11 @@ import { after } from 'next/server';
 import { createClient, createAdminClient, getUserId } from '@/lib/supabase/server';
 import { rowToContent } from '@/lib/content';
 import { enrichAndEmbed } from '@/lib/enrich';
+import { detectContentTypeFromUrl } from '@/lib/contentType';
 
 export const dynamic = 'force-dynamic';
 
-const VALID_TYPES = ['note', 'tweet', 'x', 'document', 'website', 'image', 'youtube', 'reddit', 'text'];
+const VALID_TYPES = ['note', 'tweet', 'x', 'document', 'website', 'image', 'youtube', 'reddit', 'text', 'github'];
 
 // ---------------------------------------------------------------------------
 // GET: list the user's content (optional ?type= and ?search=)
@@ -31,7 +32,9 @@ export async function GET(request: NextRequest) {
       .order('created_at', { ascending: false });
 
     if (type && type !== 'all') {
-      query = query.eq('type', type);
+      // Rows saved before migration 0002 stored repos as website+GitHub.
+      if (type === 'github') query = query.or('type.eq.github,platform.eq.GitHub');
+      else query = query.eq('type', type);
     }
 
     const { data: rows, error } = await query;
@@ -72,7 +75,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { content, type, url, title, metadata } = await req.json();
+    const body = await req.json();
+    const { content, url, title, metadata } = body;
+    // The URL is the source of truth for the type — the client just pastes a
+    // link and the bucket (tweet/reddit/youtube/github/website) is detected.
+    const type: string = (url && detectContentTypeFromUrl(url)) || body.type;
 
     if (!type || !VALID_TYPES.includes(type)) {
       return NextResponse.json({ error: 'Invalid type' }, { status: 400 });
@@ -101,12 +108,16 @@ export async function POST(req: NextRequest) {
     if (url) {
       try {
         let endpoint: string | null = null;
-        if ((type === 'tweet' || type === 'x') && (url.includes('twitter.com') || url.includes('x.com'))) {
+        if (type === 'tweet' || type === 'x') {
           endpoint = '/api/external/x';
-        } else if (type === 'reddit' && url.includes('reddit.com')) {
+        } else if (type === 'reddit') {
           endpoint = '/api/external/reddit';
-        } else if (type === 'youtube' && (url.includes('youtube.com') || url.includes('youtu.be'))) {
+        } else if (type === 'youtube') {
           endpoint = '/api/external/youtube';
+        } else if (type === 'github') {
+          endpoint = '/api/external/github';
+        } else if (type === 'website') {
+          endpoint = '/api/external/website';
         }
 
         if (endpoint) {
@@ -168,6 +179,8 @@ export async function POST(req: NextRequest) {
         ? 'Reddit'
         : type === 'youtube'
         ? 'YouTube'
+        : type === 'github'
+        ? 'GitHub'
         : null;
 
     const publicMetrics = (externalData?.public_metrics ?? {}) as Record<string, number>;
@@ -218,16 +231,25 @@ export async function POST(req: NextRequest) {
         likes: externalData?.like_count || publicMetrics.like_count || 0,
         views: externalData?.viewCount || publicMetrics.view_count || 0,
         comments: externalData?.num_comments || externalData?.commentCount || publicMetrics.reply_count || 0,
-        score: externalData?.score || 0,
+        score: externalData?.score || externalData?.stars || 0,
       },
     };
 
-    const { data: inserted, error: insertError } = await supabase
+    let { data: inserted, error: insertError } = await supabase
       .from('content')
       .insert(insertRow)
       .select('*')
       .single();
-    if (insertError) throw insertError;
+    // DBs without migration 0002 don't allow type 'github' yet; store as
+    // website (platform stays 'GitHub', which the github filter also matches).
+    if (insertError?.code === '23514' && type === 'github') {
+      ({ data: inserted, error: insertError } = await supabase
+        .from('content')
+        .insert({ ...insertRow, type: 'website' })
+        .select('*')
+        .single());
+    }
+    if (insertError || !inserted) throw insertError ?? new Error('Insert returned no row');
 
     // AI enrichment + embedding after the response is sent. Uses the
     // service-role client because the request's auth cookies are gone by then.

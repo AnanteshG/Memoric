@@ -11,6 +11,8 @@ import {
     Image as ImageIcon,
     MessageSquare,
     Globe,
+    Github,
+    Link2,
     Youtube,
     Search,
     Plus,
@@ -30,7 +32,7 @@ export const dynamic = 'force-dynamic';
 
 interface ContentItem {
     id: string;
-    type: 'tweet' | 'reddit' | 'image' | 'youtube' | 'text';
+    type: 'tweet' | 'reddit' | 'image' | 'youtube' | 'text' | 'github' | 'website';
     title: string;
     content: string;
     summary?: string;
@@ -161,17 +163,27 @@ export default function Space() {
         }
     }, []);
 
+    // Repos saved before migration 0002 are stored as website+GitHub.
+    const inBucket = (item: ContentItem, bucket: string) => {
+        const isGithub = item.type === 'github' || item.platform === 'GitHub';
+        if (bucket === 'github') return isGithub;
+        if (bucket === 'website') return item.type === 'website' && !isGithub;
+        return item.type === bucket;
+    };
+
     const categories = [
         { id: 'all', name: 'Everything', icon: LayoutGrid, color: 'bg-ink text-paper', count: contentItems.length },
-        { id: 'tweet', name: 'X posts', icon: MessageSquare, color: 'bg-brand-blue text-white', count: contentItems.filter((i) => i.type === 'tweet').length },
-        { id: 'reddit', name: 'Reddit', icon: Globe, color: 'bg-brand-orange text-white', count: contentItems.filter((i) => i.type === 'reddit').length },
-        { id: 'youtube', name: 'YouTube', icon: Youtube, color: 'bg-brand-coral text-white', count: contentItems.filter((i) => i.type === 'youtube').length },
-        { id: 'image', name: 'Images', icon: ImageIcon, color: 'bg-brand-green text-white', count: contentItems.filter((i) => i.type === 'image').length },
-        { id: 'text', name: 'Notes', icon: FileText, color: 'bg-brand-yellow', count: contentItems.filter((i) => i.type === 'text').length },
+        { id: 'tweet', name: 'X posts', icon: MessageSquare, color: 'bg-brand-blue text-white', count: contentItems.filter((i) => inBucket(i, 'tweet')).length },
+        { id: 'reddit', name: 'Reddit', icon: Globe, color: 'bg-brand-orange text-white', count: contentItems.filter((i) => inBucket(i, 'reddit')).length },
+        { id: 'youtube', name: 'YouTube', icon: Youtube, color: 'bg-brand-coral text-white', count: contentItems.filter((i) => inBucket(i, 'youtube')).length },
+        { id: 'github', name: 'GitHub', icon: Github, color: 'bg-ink text-paper', count: contentItems.filter((i) => inBucket(i, 'github')).length },
+        { id: 'website', name: 'Links', icon: Link2, color: 'bg-brand-purple text-white', count: contentItems.filter((i) => inBucket(i, 'website')).length },
+        { id: 'image', name: 'Images', icon: ImageIcon, color: 'bg-brand-green text-white', count: contentItems.filter((i) => inBucket(i, 'image')).length },
+        { id: 'text', name: 'Notes', icon: FileText, color: 'bg-brand-yellow', count: contentItems.filter((i) => inBucket(i, 'text')).length },
     ];
 
     const filteredItems = contentItems.filter((item) => {
-        const matchesCategory = selectedCategory === 'all' || item.type === selectedCategory;
+        const matchesCategory = selectedCategory === 'all' || inBucket(item, selectedCategory);
         const matchesSearch =
             searchQuery === '' ||
             item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -336,16 +348,40 @@ export default function Space() {
                                             isNote ? noteColor : 'bg-white'
                                         }`}
                                     >
-                                        {/* Type strip for link content */}
+                                        {/* Type strip for link content; delete sits top-right on every card */}
                                         {!isNote && (
                                             <div className="mb-2.5 flex items-center gap-1.5 text-xs font-extrabold uppercase tracking-wide">
                                                 {item.type === 'youtube' && <span className="flex items-center gap-1 bg-brand-coral px-1.5 py-0.5 text-white"><Play size={11} fill="white" /> YouTube</span>}
                                                 {item.type === 'reddit' && <span className="flex items-center gap-1 bg-brand-orange px-1.5 py-0.5 text-white"><Globe size={11} /> Reddit</span>}
                                                 {item.type === 'image' && <span className="flex items-center gap-1 bg-brand-green px-1.5 py-0.5 text-white"><ImageIcon size={11} /> Image</span>}
+                                                {inBucket(item, 'github') && <span className="flex items-center gap-1 bg-ink px-1.5 py-0.5 text-paper"><Github size={11} /> GitHub</span>}
+                                                {inBucket(item, 'website') && <span className="flex items-center gap-1 bg-brand-purple px-1.5 py-0.5 text-white"><Link2 size={11} /> Link</span>}
                                                 <span className="ml-auto font-medium normal-case text-ink/40">
                                                     {new Date(item.createdAt).toLocaleDateString()}
                                                 </span>
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleDeleteContent(item.id);
+                                                    }}
+                                                    className="p-0.5 text-ink/35 opacity-0 transition hover:text-brand-coral group-hover:opacity-100"
+                                                    title="Unpin"
+                                                >
+                                                    <Trash2 size={14} />
+                                                </button>
                                             </div>
+                                        )}
+                                        {isNote && (
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleDeleteContent(item.id);
+                                                }}
+                                                className="absolute right-2 top-2 z-10 border-2 border-ink bg-white p-1 text-ink opacity-0 shadow-hard-sm transition hover:bg-brand-coral hover:text-white group-hover:opacity-100"
+                                                title="Unpin"
+                                            >
+                                                <Trash2 size={13} />
+                                            </button>
                                         )}
 
                                         {item.thumbnail && (
@@ -381,23 +417,13 @@ export default function Space() {
                                             </div>
                                         )}
 
-                                        <div className="mt-3 flex items-center">
-                                            {item.url && (
+                                        {item.url && (
+                                            <div className="mt-3 flex items-center">
                                                 <span className={`flex items-center gap-1 text-xs font-bold ${isNote ? 'opacity-60' : 'text-ink/40'}`}>
                                                     <ExternalLink size={12} /> open
                                                 </span>
-                                            )}
-                                            <button
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    handleDeleteContent(item.id);
-                                                }}
-                                                className="ml-auto border-2 border-ink bg-white p-1 text-ink opacity-0 shadow-hard-sm transition hover:bg-brand-coral hover:text-white group-hover:opacity-100"
-                                                title="Unpin"
-                                            >
-                                                <Trash2 size={13} />
-                                            </button>
-                                        </div>
+                                            </div>
+                                        )}
                                     </article>
                                 );
                             })}
