@@ -38,6 +38,7 @@ export function rowToContent(row: ContentRow) {
     platform: row.platform ?? null,
     thumbnail: row.thumbnail ?? null,
     metadata,
+    userNote: ((metadata as Record<string, unknown>).userNote as string) ?? '',
     externalData: row.external_data ?? null,
     metrics: row.metrics ?? {},
     tweetData: (metadata as Record<string, unknown>).tweetData ?? undefined,

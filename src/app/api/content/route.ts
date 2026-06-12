@@ -76,7 +76,8 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { content, url, title, metadata } = body;
+    // imageData: a downscaled data URL sent by the client for image uploads.
+    const { content, url, title, metadata, imageData } = body;
     // The URL is the source of truth for the type — the client just pastes a
     // link and the bucket (tweet/reddit/youtube/github/website) is detected.
     const type: string = (url && detectContentTypeFromUrl(url)) || body.type;
@@ -103,6 +104,9 @@ export async function POST(req: NextRequest) {
     let finalContent = content || '';
     let finalTitle = title || '';
     let externalData: Record<string, unknown> | null = null;
+    // The user's own note on a link/post, kept separate from the fetched text
+    // so the board can display it (it's also merged into content for RAG).
+    let userNote = '';
 
     // Fetch external data for known link types.
     if (url) {
@@ -142,11 +146,11 @@ export async function POST(req: NextRequest) {
                 (externalData?.selftext as string) ||
                 (externalData?.description as string) ||
                 '').trim();
-            const userNote = finalContent.trim();
-            const noteIsJustUrl = userNote === String(url).trim();
+            const note = finalContent.trim();
+            const noteIsJustUrl = note === String(url).trim();
+            if (note && !noteIsJustUrl) userNote = note;
             if (externalText) {
-              finalContent =
-                userNote && !noteIsJustUrl ? `${externalText}\n\nMy note: ${userNote}` : externalText;
+              finalContent = userNote ? `${externalText}\n\nMy note: ${userNote}` : externalText;
             }
           }
         }
@@ -186,6 +190,7 @@ export async function POST(req: NextRequest) {
     const publicMetrics = (externalData?.public_metrics ?? {}) as Record<string, number>;
     const tweetImages = (externalData?.images as string[] | undefined) ?? [];
     const rowMetadata: Record<string, unknown> = { ...(metadata || {}) };
+    if (userNote) rowMetadata.userNote = userNote;
     if (isTweet && externalData) {
       // Normalized to the shape XCard renders: metrics.{likes,retweets,replies,views}.
       rowMetadata.tweetData = {
@@ -214,15 +219,23 @@ export async function POST(req: NextRequest) {
       // Placeholder values; the background enrichment below fills these in.
       processed_content: finalContent,
       summary: '',
-      tags: [type],
+      // No default placeholder tags — enrichment sets real hashtags (if any).
+      tags: [],
       embedding: null,
       original_link: url || null,
       url: url || null,
-      author: (authorObj?.name as string) || (externalData?.channelTitle as string) || null,
+      author:
+        (authorObj?.name as string) ||
+        // Reddit and other fetchers return the author as a plain string.
+        (typeof externalData?.author === 'string' ? externalData.author : null) ||
+        (externalData?.channelTitle as string) ||
+        null,
       platform,
       thumbnail:
+        (typeof imageData === 'string' && imageData.startsWith('data:image') ? imageData : null) ||
         (externalData?.thumbnails as Record<string, Record<string, string>>)?.medium?.url ||
         (externalData?.thumbnail as string) ||
+        (externalData?.preview as string) ||
         tweetImages[0] ||
         null,
       metadata: rowMetadata,

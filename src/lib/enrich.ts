@@ -1,12 +1,11 @@
 // src/lib/enrich.ts
-// AI enrichment for saved content: Gemini summary + tags + insights, plus the
-// semantic embedding for RAG. Designed to run in the background (next/server
-// `after()`) so saving feels instant; the chat route also uses the embedding
-// helper to lazily backfill rows whose background run didn't finish.
-import { GoogleGenerativeAI } from '@google/generative-ai';
+// AI enrichment for saved content: summary + tags + insights via a free chat
+// provider (see lib/ai.ts), plus the semantic embedding for RAG. Designed to
+// run in the background (next/server `after()`) so saving feels instant; the
+// chat route also uses the embedding helper to lazily backfill rows whose
+// background run didn't finish.
+import { chatComplete } from '@/lib/ai';
 import { embedText, buildEmbeddingInput } from '@/lib/embeddings';
-
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 
 export interface EnrichInput {
   type: string;
@@ -24,31 +23,46 @@ export interface EnrichResult {
   embedding: number[] | null;
 }
 
-export async function enrichAndEmbed(input: EnrichInput): Promise<EnrichResult> {
-  let summary = input.content.substring(0, 200);
-  let tags: string[] = [input.type];
-  let processedContent = input.content;
+// Real hashtags pulled from the content (e.g. #productivity in an X post).
+// Tags are not AI-invented — if the content has no hashtags, there are none.
+function extractHashtags(text: string): string[] {
+  const matches = text.match(/(?:^|\s)#(\w{2,30})/g) ?? [];
+  const seen = new Set<string>();
+  for (const m of matches) {
+    const tag = m.trim().replace(/^#/, '').toLowerCase();
+    if (tag && !/^\d+$/.test(tag)) seen.add(tag); // skip bare numbers (#1)
+  }
+  return [...seen].slice(0, 8);
+}
 
-  try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+// A summary that's just the prompt's example echoed back by a weak model.
+function isPlaceholderSummary(s: string): boolean {
+  const t = s.trim().toLowerCase();
+  return !t || t === '2-3 sentence summary' || t === '2-3 line summary' || t === 'summary';
+}
+
+export async function enrichAndEmbed(input: EnrichInput): Promise<EnrichResult> {
+  // No AI-invented tags — only genuine hashtags found in the content.
+  const tags = extractHashtags(`${input.title}\n${input.content}`);
+  let summary = '';
+  const processedContent = input.content;
+
+  // Thin content (a short note/tweet, or a keyless Reddit post that's just the
+  // title) doesn't need a summary — and summarizing it only invites the model
+  // to hallucinate. The content itself is the summary in that case.
+  const summarizable = input.content.trim().length >= 200;
+
+  if (summarizable) try {
     const authorLine = input.authorName
       ? `Author: ${input.authorName}${input.authorHandle ? ` (@${input.authorHandle})` : ''}\n`
       : '';
-    const prompt = `Analyze the following content and respond with JSON only:
-{"summary":"2-3 sentence summary","tags":["tag1","tag2","tag3","tag4","tag5"],"insights":"key insights"}
+    const prompt = `Write a concise 2-3 sentence summary of the content below. Respond with ONLY the summary text — no labels, no quotes, no preamble, no markdown.
 
 Type: ${input.type}
 ${authorLine}Title: ${input.title}
-Content: ${input.content}`;
-    const result = await model.generateContent(prompt);
-    const text = result.response.text();
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[0]);
-      summary = parsed.summary || summary;
-      tags = Array.isArray(parsed.tags) && parsed.tags.length ? parsed.tags : tags;
-      processedContent = parsed.insights || processedContent;
-    }
+Content: ${input.content.slice(0, 12000)}`;
+    const text = (await chatComplete(prompt, { fast: true })).trim();
+    if (!isPlaceholderSummary(text)) summary = text;
   } catch (error) {
     console.warn('AI enrichment failed, using fallback:', error);
   }

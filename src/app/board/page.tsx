@@ -40,6 +40,7 @@ interface ContentItem {
     url?: string;
     createdAt: string;
     tags: string[];
+    userNote?: string;
     size?: string;
     platform?: string;
     author?: string;
@@ -70,7 +71,14 @@ interface ContentItem {
 const ROTS = [-2.5, 1.5, -1, 2.5, -1.8, 1, -3, 2];
 const PINS = ['pin', 'pin pin-blue', 'tape', 'pin pin-green', 'tape', 'pin'];
 
-export default function Space() {
+// Tags are real hashtags now; drop legacy placeholders ("tag1") and bucket-name
+// tags ("reddit", "youtube"…) still present on rows saved before that change.
+const BUCKET_NAMES = new Set(['tweet', 'reddit', 'image', 'youtube', 'text', 'github', 'website', 'note', 'x', 'document']);
+function realTags(tags: string[] | undefined): string[] {
+    return (tags ?? []).filter((t) => t && !/^tag\d+$/i.test(t) && !BUCKET_NAMES.has(t.toLowerCase()));
+}
+
+export default function Board() {
     const router = useRouter();
     const [selectedCategory, setSelectedCategory] = useState<string>('all');
     const [showUploadModal, setShowUploadModal] = useState(false);
@@ -392,24 +400,37 @@ export default function Space() {
                                         {isNote ? (
                                             <>
                                                 <h3 className="font-hand text-3xl leading-none">{item.title}</h3>
-                                                <p className="mt-2 line-clamp-5 font-hand text-xl leading-snug opacity-80">
-                                                    {item.summary || item.content}
-                                                </p>
+                                                {item.content?.trim() && (
+                                                    <p className="mt-2 line-clamp-5 font-hand text-xl leading-snug opacity-80">
+                                                        {item.content}
+                                                    </p>
+                                                )}
                                             </>
                                         ) : (
                                             <>
                                                 <h3 className="line-clamp-2 text-[17px] font-extrabold leading-snug">{item.title}</h3>
-                                                {(item.summary || item.content) && (
+                                                {item.summary?.trim() && (
                                                     <p className="mt-1.5 line-clamp-3 text-sm font-medium text-ink/60">
-                                                        {item.summary || item.content}
+                                                        {item.summary}
                                                     </p>
                                                 )}
                                             </>
                                         )}
 
-                                        {item.tags?.length > 0 && (
+                                        {/* The user's own note, as a taped sticky annotation */}
+                                        {!isNote && item.userNote && (
+                                            <div className="relative mt-3 -rotate-1 border-2 border-ink bg-brand-yellow px-3 pb-2 pt-3 shadow-hard-sm">
+                                                <span className="absolute -top-2 left-1/2 h-3.5 w-12 -translate-x-1/2 -rotate-2 border border-ink/20 bg-white/60" />
+                                                <span className="font-hand text-base leading-none text-ink/50">my note</span>
+                                                <p className="mt-0.5 line-clamp-4 font-hand text-xl leading-snug text-ink">
+                                                    {item.userNote}
+                                                </p>
+                                            </div>
+                                        )}
+
+                                        {realTags(item.tags).length > 0 && (
                                             <div className="mt-3 flex flex-wrap gap-1.5">
-                                                {item.tags.slice(0, 3).map((tag, i) => (
+                                                {realTags(item.tags).slice(0, 3).map((tag, i) => (
                                                     <span key={i} className={`border-2 border-ink px-1.5 py-0.5 text-[11px] font-bold ${isNote ? 'bg-white/60 text-ink' : 'bg-paper'}`}>
                                                         #{tag}
                                                     </span>

@@ -243,7 +243,7 @@ export default function Home() {
           </SignedOut>
           <SignedIn>
             <button
-              onClick={() => router.push('/space')}
+              onClick={() => router.push('/board')}
               className="border-[3px] border-ink bg-brand-green px-4 py-2 font-extrabold text-white shadow-hard transition hover:-translate-x-0.5 hover:-translate-y-0.5 sm:px-6"
             >
               My board
@@ -367,7 +367,7 @@ export default function Home() {
           </SignedOut>
           <SignedIn>
             <button
-              onClick={() => router.push('/space')}
+              onClick={() => router.push('/board')}
               className="border-[3px] border-ink bg-brand-coral px-8 py-3 text-lg font-extrabold text-white shadow-hard-lg transition hover:-translate-x-1 hover:-translate-y-1"
             >
               📌 Open your board

@@ -1,34 +1,39 @@
-import { GoogleGenerativeAI, TaskType } from '@google/generative-ai';
+// src/lib/embeddings.ts
+// Local embeddings via transformers.js — no API key, no rate limits, free for
+// any number of users. nomic-embed-text-v1.5 produces 768-dim vectors (matches
+// the vector(768) column) and handles long documents (8k-token context).
+//
+// The ONNX model (~135MB quantized) downloads from the Hugging Face Hub on
+// first use and is cached on disk (set HF_HOME to control where).
+import { pipeline, type FeatureExtractionPipeline } from '@huggingface/transformers';
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
+const EMBED_MODEL = 'nomic-ai/nomic-embed-text-v1.5';
+const MAX_CHARS = 8000;
 
-// gemini-embedding-001 supports Matryoshka truncation; we request 768 dims to
-// match the vector(768) column. Cosine distance (pgvector <=>) is scale-
-// invariant, so the truncated (non-normalized) vectors are fine for retrieval.
-const EMBED_MODEL = 'gemini-embedding-001';
-const DIMS = 768;
-const MAX_CHARS = 8000; // keep under the model's token limit
+export type EmbedTask = 'document' | 'query';
+
+let extractorPromise: Promise<FeatureExtractionPipeline> | null = null;
+
+function getExtractor(): Promise<FeatureExtractionPipeline> {
+  extractorPromise ??= pipeline('feature-extraction', EMBED_MODEL, { dtype: 'q8' });
+  return extractorPromise;
+}
 
 // Returns a 768-dim embedding for the text, or null on failure.
 export async function embedText(
   text: string,
-  taskType: TaskType = TaskType.RETRIEVAL_DOCUMENT
+  task: EmbedTask = 'document'
 ): Promise<number[] | null> {
   const input = (text || '').trim().slice(0, MAX_CHARS);
   if (!input) return null;
   try {
-    const model = genAI.getGenerativeModel({ model: EMBED_MODEL });
-    // `outputDimensionality` is supported by the API but missing from this
-    // SDK version's types, so the request is cast.
-    const request = {
-      content: { role: 'user', parts: [{ text: input }] },
-      taskType,
-      outputDimensionality: DIMS,
-    };
-    const result = await model.embedContent(
-      request as unknown as Parameters<typeof model.embedContent>[0]
-    );
-    return result.embedding?.values ?? null;
+    const extractor = await getExtractor();
+    // nomic models are trained with task prefixes; matching document/query
+    // prefixes is what makes retrieval work.
+    const prefixed = `${task === 'query' ? 'search_query' : 'search_document'}: ${input}`;
+    const output = await extractor(prefixed, { pooling: 'mean', normalize: true });
+    const vector = (output.tolist() as number[][])[0];
+    return Array.isArray(vector) && vector.length > 0 ? vector : null;
   } catch (error) {
     console.warn('Embedding failed:', error);
     return null;

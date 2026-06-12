@@ -1,109 +1,237 @@
 // src/app/api/external/youtube/route.ts
+// YouTube fetcher that works without any API key: metadata and caption tracks
+// come from the InnerTube player endpoint using the ANDROID client (the web
+// client's caption URLs require a proof-of-origin token and return empty
+// bodies; the Android client's don't). oEmbed is the metadata fallback. The
+// transcript becomes the RAG-able content. If YOUTUBE_API_KEY is set, the
+// Data API adds stats (likes/comments) and the publish date.
 import { NextRequest, NextResponse } from 'next/server';
+
+const FETCH_TIMEOUT_MS = 12_000;
+// Stored transcript cap. Embeddings/chat slice further; this just keeps rows sane.
+const TRANSCRIPT_MAX_CHARS = 20_000;
+
+function extractVideoId(url: string): string | null {
+  const match = url.match(
+    /(?:youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|shorts\/|live\/)|youtu\.be\/)([\w-]{6,})/
+  );
+  return match?.[1] ?? null;
+}
+
+type CaptionTrack = { baseUrl?: string; languageCode?: string; kind?: string };
+
+type PlayerResponse = {
+  videoDetails?: {
+    title?: string;
+    shortDescription?: string;
+    author?: string;
+    lengthSeconds?: string;
+    viewCount?: string;
+    keywords?: string[];
+  };
+  captions?: {
+    playerCaptionsTracklistRenderer?: { captionTracks?: CaptionTrack[] };
+  };
+};
+
+async function fetchPlayerResponse(videoId: string): Promise<PlayerResponse | null> {
+  try {
+    const res = await fetch('https://www.youtube.com/youtubei/v1/player', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0' },
+      body: JSON.stringify({
+        context: {
+          client: { clientName: 'ANDROID', clientVersion: '20.10.38', androidSdkVersion: 30 },
+        },
+        videoId,
+      }),
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as PlayerResponse;
+  } catch (error) {
+    console.warn('YouTube player endpoint failed:', error);
+    return null;
+  }
+}
+
+// Prefer a human-made English track, then auto-generated English, then whatever
+// the video has (better a non-English transcript than none).
+function pickCaptionTrack(tracks: CaptionTrack[]): CaptionTrack | null {
+  if (!tracks.length) return null;
+  const en = tracks.filter((t) => (t.languageCode ?? '').startsWith('en'));
+  return en.find((t) => t.kind !== 'asr') ?? en[0] ?? tracks[0];
+}
+
+function decodeXmlEntities(s: string): string {
+  return s
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'");
+}
+
+// Caption bodies arrive as json3 or as srv3/timedtext XML depending on what
+// the track URL honors; handle both.
+function parseCaptionBody(body: string): string {
+  let text = '';
+  if (body.trimStart().startsWith('{')) {
+    try {
+      const data = JSON.parse(body) as { events?: { segs?: { utf8?: string }[] }[] };
+      text = (data.events ?? [])
+        .flatMap((e) => e.segs ?? [])
+        .map((s) => s.utf8 ?? '')
+        .join(' ');
+    } catch {
+      return '';
+    }
+  } else {
+    text = decodeXmlEntities(body.replace(/<[^>]+>/g, ' '));
+    text = text.replace(/^<\?xml[^?]*\?>/, '');
+  }
+  return text.replace(/\s+/g, ' ').trim();
+}
+
+async function fetchTranscript(playerResponse: PlayerResponse): Promise<string | null> {
+  try {
+    const tracks = playerResponse.captions?.playerCaptionsTracklistRenderer?.captionTracks ?? [];
+    const track = pickCaptionTrack(tracks);
+    if (!track?.baseUrl) return null;
+
+    const res = await fetch(`${track.baseUrl}&fmt=json3`, {
+      headers: { 'User-Agent': 'Mozilla/5.0' },
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    });
+    if (!res.ok) return null;
+    const text = parseCaptionBody(await res.text());
+    return text ? text.slice(0, TRANSCRIPT_MAX_CHARS) : null;
+  } catch (error) {
+    console.warn('Transcript fetch failed:', error);
+    return null;
+  }
+}
+
+// Keyless official endpoint: title, channel and thumbnail for any public video.
+async function fetchOEmbed(videoId: string): Promise<Record<string, string> | null> {
+  try {
+    const res = await fetch(
+      `https://www.youtube.com/oembed?url=${encodeURIComponent(
+        `https://www.youtube.com/watch?v=${videoId}`
+      )}&format=json`,
+      { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) }
+    );
+    if (!res.ok) return null;
+    return (await res.json()) as Record<string, string>;
+  } catch {
+    return null;
+  }
+}
+
+type DataApiVideo = {
+  snippet?: {
+    title?: string;
+    description?: string;
+    channelTitle?: string;
+    publishedAt?: string;
+    thumbnails?: Record<string, { url: string }>;
+    tags?: string[];
+  };
+  statistics?: { viewCount?: string; likeCount?: string; commentCount?: string };
+  contentDetails?: { duration?: string };
+};
+
+async function fetchDataApi(videoId: string, apiKey: string): Promise<DataApiVideo | null> {
+  try {
+    const res = await fetch(
+      `https://www.googleapis.com/youtube/v3/videos?id=${videoId}&key=${apiKey}&part=snippet,statistics,contentDetails`,
+      { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) }
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+    return (data.items?.[0] as DataApiVideo) ?? null;
+  } catch (error) {
+    console.warn('YouTube Data API failed:', error);
+    return null;
+  }
+}
 
 export async function POST(req: NextRequest) {
   try {
     const { url } = await req.json();
-    
     if (!url) {
       return NextResponse.json({ error: 'URL is required' }, { status: 400 });
     }
 
-    // Extract video ID from YouTube URL
-    const videoIdMatch = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\n?#]+)/);
-    if (!videoIdMatch) {
+    const videoId = extractVideoId(url);
+    if (!videoId) {
       return NextResponse.json({ error: 'Invalid YouTube URL' }, { status: 400 });
     }
 
-    const videoId = videoIdMatch[1];
-
-    // Check if YouTube Data API key is available
     const apiKey = process.env.YOUTUBE_API_KEY;
-    
-    if (apiKey) {
-      try {
-        const response = await fetch(
-          `https://www.googleapis.com/youtube/v3/videos?id=${videoId}&key=${apiKey}&part=snippet,statistics,contentDetails`,
-          {
-            headers: {
-              'Accept': 'application/json',
-            },
-          }
-        );
+    const [playerResponse, apiVideo] = await Promise.all([
+      fetchPlayerResponse(videoId),
+      apiKey ? fetchDataApi(videoId, apiKey) : Promise.resolve(null),
+    ]);
 
-        if (!response.ok) {
-          throw new Error('YouTube API request failed');
-        }
+    const details = playerResponse?.videoDetails ?? {};
+    const oembed = playerResponse || apiVideo ? null : await fetchOEmbed(videoId);
 
-        const data = await response.json();
-        const video = data.items?.[0];
-
-        if (!video) {
-          throw new Error('Video not found');
-        }
-
-        const processedData = {
-          id: video.id,
-          title: video.snippet.title,
-          description: video.snippet.description,
-          channelTitle: video.snippet.channelTitle,
-          publishedAt: video.snippet.publishedAt,
-          thumbnails: video.snippet.thumbnails,
-          duration: video.contentDetails.duration,
-          viewCount: video.statistics.viewCount,
-          likeCount: video.statistics.likeCount,
-          commentCount: video.statistics.commentCount,
-          tags: video.snippet.tags || []
-        };
-
-        return NextResponse.json({
-          success: true,
-          data: processedData,
-          metadata: {
-            platform: 'youtube',
-            type: 'video',
-            url: url,
-            videoId: videoId
-          }
-        });
-
-      } catch (apiError) {
-        console.warn('YouTube API failed, using mock data:', apiError);
-      }
+    const title = apiVideo?.snippet?.title || details.title || oembed?.title || '';
+    if (!title) {
+      return NextResponse.json({ error: 'Video not found or unavailable' }, { status: 502 });
     }
 
-    // Fallback to mock data if API key is not available or API fails
-    const mockYouTubeData = {
-      id: videoId,
-      title: "Sample YouTube Video Title",
-      description: "This is a sample YouTube video description. The actual content would be fetched from YouTube's Data API.",
-      channelTitle: "Sample Channel",
-      publishedAt: new Date().toISOString(),
-      thumbnails: {
-        default: { url: `https://img.youtube.com/vi/${videoId}/default.jpg` },
-        medium: { url: `https://img.youtube.com/vi/${videoId}/mqdefault.jpg` },
-        high: { url: `https://img.youtube.com/vi/${videoId}/hqdefault.jpg` },
-        maxres: { url: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg` }
-      },
-      duration: "PT5M30S",
-      viewCount: "10000",
-      likeCount: "500",
-      commentCount: "25",
-      tags: ["sample", "video", "youtube"]
-    };
+    const description = apiVideo?.snippet?.description || details.shortDescription || '';
+    const channelTitle =
+      apiVideo?.snippet?.channelTitle || details.author || oembed?.author_name || '';
+    const transcript = playerResponse ? await fetchTranscript(playerResponse) : null;
+
+    // `text` is what gets saved as the item's content (and embedded for RAG):
+    // the description plus the transcript beats the description alone.
+    const text = [
+      channelTitle ? `YouTube video by ${channelTitle}: ${title}` : title,
+      description,
+      transcript ? `Transcript:\n${transcript}` : '',
+    ]
+      .filter(Boolean)
+      .join('\n\n');
+
+    const lengthSeconds = Number(details.lengthSeconds || 0);
+    const duration =
+      apiVideo?.contentDetails?.duration ||
+      (lengthSeconds ? `PT${Math.floor(lengthSeconds / 60)}M${lengthSeconds % 60}S` : null);
 
     return NextResponse.json({
       success: true,
-      data: mockYouTubeData,
+      data: {
+        id: videoId,
+        title,
+        text,
+        description,
+        transcript,
+        channelTitle,
+        publishedAt: apiVideo?.snippet?.publishedAt || null,
+        thumbnails: apiVideo?.snippet?.thumbnails || {
+          default: { url: `https://img.youtube.com/vi/${videoId}/default.jpg` },
+          medium: { url: `https://img.youtube.com/vi/${videoId}/mqdefault.jpg` },
+          high: { url: `https://img.youtube.com/vi/${videoId}/hqdefault.jpg` },
+          maxres: { url: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg` },
+        },
+        duration,
+        viewCount: apiVideo?.statistics?.viewCount || details.viewCount || null,
+        likeCount: apiVideo?.statistics?.likeCount || null,
+        commentCount: apiVideo?.statistics?.commentCount || null,
+        tags: apiVideo?.snippet?.tags || details.keywords || [],
+      },
       metadata: {
         platform: 'youtube',
         type: 'video',
-        url: url,
-        videoId: videoId,
-        note: 'Mock data - Add YOUTUBE_API_KEY to environment variables for real data'
-      }
+        url,
+        videoId,
+        hasTranscript: Boolean(transcript),
+      },
     });
-
   } catch (error) {
     console.error('YouTube API error:', error);
     return NextResponse.json(
@@ -112,12 +240,3 @@ export async function POST(req: NextRequest) {
     );
   }
 }
-
-/* 
-To integrate with real YouTube Data API v3:
-
-1. Get API key from Google Cloud Console
-2. Enable YouTube Data API v3
-3. Add to environment variables: YOUTUBE_API_KEY=your_api_key_here
-4. The API will automatically use real data when the key is available
-*/

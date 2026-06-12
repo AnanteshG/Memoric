@@ -7,7 +7,7 @@ import { createClient } from '@/lib/supabase/client';
 
 function LoginContent() {
   const searchParams = useSearchParams();
-  const next = searchParams.get('next') ?? '/space';
+  const next = searchParams.get('next') ?? '/board';
   const error = searchParams.get('error');
 
   const signInWithGoogle = async () => {

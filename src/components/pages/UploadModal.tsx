@@ -1,11 +1,37 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
     Upload, FileText, AlertCircle, Loader, Link as LinkIcon,
     Image as ImageIcon, MessageSquare, Youtube, Globe, Github, X,
 } from 'lucide-react';
 import { detectContentTypeFromUrl, TYPE_LABELS, type DetectedType } from '@/lib/contentType';
+
+// Downscale an image in the browser to a compact JPEG data URL so it can be
+// stored inline (as the card thumbnail) without any storage bucket setup.
+async function imageToDataUrl(file: File, maxDim = 900, quality = 0.82): Promise<string> {
+    const objectUrl = URL.createObjectURL(file);
+    try {
+        const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+            const el = new window.Image();
+            el.onload = () => resolve(el);
+            el.onerror = reject;
+            el.src = objectUrl;
+        });
+        const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+        const w = Math.round(img.width * scale);
+        const h = Math.round(img.height * scale);
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return objectUrl;
+        ctx.drawImage(img, 0, 0, w, h);
+        return canvas.toDataURL('image/jpeg', quality);
+    } finally {
+        URL.revokeObjectURL(objectUrl);
+    }
+}
 
 interface UploadModalProps {
     type?: string;
@@ -40,9 +66,21 @@ export default function UploadModal({ type: initialType, isOpen, onClose, onSucc
     const [title, setTitle] = useState('');
     const [url, setUrl] = useState('');
     const [file, setFile] = useState<File | null>(null);
+    const [previewUrl, setPreviewUrl] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState(false);
+
+    // Live preview of the chosen image; revoked when it changes or unmounts.
+    useEffect(() => {
+        if (!file) {
+            setPreviewUrl(null);
+            return;
+        }
+        const objectUrl = URL.createObjectURL(file);
+        setPreviewUrl(objectUrl);
+        return () => URL.revokeObjectURL(objectUrl);
+    }, [file]);
 
     if (!isOpen) return null;
 
@@ -61,10 +99,12 @@ export default function UploadModal({ type: initialType, isOpen, onClose, onSucc
 
             let finalContent = content;
             let finalTitle = title;
+            let imageData: string | undefined;
 
             if (file && mode === 'image') {
                 finalContent = finalContent || file.name;
                 finalTitle = finalTitle || file.name;
+                imageData = await imageToDataUrl(file);
             }
 
             const response = await fetch('/api/content', {
@@ -76,6 +116,7 @@ export default function UploadModal({ type: initialType, isOpen, onClose, onSucc
                     content: finalContent,
                     title: finalTitle,
                     url: mode === 'link' ? url : undefined,
+                    imageData,
                     metadata: {
                         fileName: file?.name,
                         fileSize: file?.size,
@@ -228,10 +269,23 @@ export default function UploadModal({ type: initialType, isOpen, onClose, onSucc
                                             disabled={isLoading}
                                         />
                                         <label htmlFor="file-upload" className="cursor-pointer">
-                                            <Upload size={28} className="mx-auto mb-2 text-ink/50" />
-                                            <p className="font-medium text-ink/60">
-                                                {file ? file.name : 'Click to upload or drag and drop'}
-                                            </p>
+                                            {previewUrl ? (
+                                                <>
+                                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                                    <img
+                                                        src={previewUrl}
+                                                        alt="Preview"
+                                                        className="mx-auto mb-2 max-h-52 w-auto border-2 border-ink object-contain shadow-hard-sm"
+                                                    />
+                                                    <p className="truncate font-medium text-ink/60">{file?.name}</p>
+                                                    <p className="font-hand text-lg text-ink/40">click to change</p>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Upload size={28} className="mx-auto mb-2 text-ink/50" />
+                                                    <p className="font-medium text-ink/60">Click to upload or drag and drop</p>
+                                                </>
+                                            )}
                                         </label>
                                     </div>
                                 </div>

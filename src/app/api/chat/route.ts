@@ -1,13 +1,11 @@
 // src/app/api/chat/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { GoogleGenerativeAI, TaskType } from '@google/generative-ai';
 import { createClient, getUserId } from '@/lib/supabase/server';
+import { chatComplete } from '@/lib/ai';
 import { embedText, buildEmbeddingInput } from '@/lib/embeddings';
 import { buildAuthorPrefixedContent } from '@/lib/enrich';
 
 export const dynamic = 'force-dynamic';
-
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 
 type ChatTurn = { message: string; response: string };
 type Hit = {
@@ -20,9 +18,12 @@ type Hit = {
   similarity?: number;
 };
 
-// Cosine-similarity floor for a hit to count as an actual match; below this
-// the item is unrelated and would only pad the sources list.
-const MIN_SIMILARITY = 0.45;
+// Cosine-similarity floor for a hit to count as an actual match. nomic-embed
+// has a high baseline (unrelated text still scores ~0.4-0.5; genuinely related
+// pairs score ~0.65+), so the floor must be high or every pin looks "related".
+const MIN_SIMILARITY = 0.6;
+// Never surface more than a handful of pins as sources for one question.
+const MAX_SOURCES = 3;
 
 // The chat bubble renders plain text, so markdown the model emits despite the
 // prompt instruction would show as literal ** and # characters.
@@ -41,7 +42,7 @@ type Supa = Awaited<ReturnType<typeof createClient>>;
 // Semantic retrieval via pgvector (match_content RPC). Returns [] if the query
 // can't be embedded or no rows have embeddings yet.
 async function semanticSearch(supabase: Supa, message: string): Promise<Hit[]> {
-  const queryEmbedding = await embedText(message, TaskType.RETRIEVAL_QUERY);
+  const queryEmbedding = await embedText(message, 'query');
   if (!queryEmbedding) return [];
 
   const { data, error } = await supabase.rpc('match_content', {
@@ -52,9 +53,9 @@ async function semanticSearch(supabase: Supa, message: string): Promise<Hit[]> {
     console.warn('Vector search failed, falling back to keyword:', error.message);
     return [];
   }
-  return ((data ?? []) as Hit[]).filter(
-    (hit) => hit.similarity === undefined || hit.similarity >= MIN_SIMILARITY
-  );
+  return ((data ?? []) as Hit[])
+    .filter((hit) => typeof hit.similarity === 'number' && hit.similarity >= MIN_SIMILARITY)
+    .slice(0, MAX_SOURCES);
 }
 
 // Keyword fallback over Postgres (for items without embeddings, or if vector
@@ -66,22 +67,20 @@ async function keywordSearch(supabase: Supa, userId: string, message: string): P
     .filter((t) => t.length > 2)
     .slice(0, 6);
 
-  const cols = ['title', 'content', 'summary', 'processed_content'];
-  const orFilter =
-    terms.length > 0
-      ? terms.flatMap((t) => cols.map((c) => `${c}.ilike.%${t}%`)).join(',')
-      : '';
+  // No usable search terms → nothing to match. Return [] rather than falling
+  // through to "every recent pin", which is what made chat list all pins.
+  if (terms.length === 0) return [];
 
-  let query = supabase
+  const cols = ['title', 'content', 'summary', 'processed_content'];
+  const orFilter = terms.flatMap((t) => cols.map((c) => `${c}.ilike.%${t}%`)).join(',');
+
+  const { data, error } = await supabase
     .from('content')
     .select('id, title, content, summary, type, url')
     .eq('user_id', userId)
+    .or(orFilter)
     .order('created_at', { ascending: false })
-    .limit(10);
-
-  if (orFilter) query = query.or(orFilter);
-
-  const { data, error } = await query;
+    .limit(MAX_SOURCES);
   if (error) {
     console.warn('Keyword search failed:', error.message);
     return [];
@@ -193,19 +192,18 @@ ${contextText}
 ${historyText}
 
 Instructions:
-1. Use the knowledge base content above when relevant, and cite which sources you used.
-2. If nothing relevant is found, say so clearly and answer generally.
-3. Be conversational and concise.
-4. Respond in plain text only — no markdown. Never use asterisks, backticks, or # headers. For lists, start lines with "• ".
+1. Answer in 2-4 short sentences. Be direct — lead with the answer, no preamble or filler.
+2. Base the answer on the knowledge base content above when relevant. Do NOT list or restate the sources; they are shown to the user separately.
+3. If nothing relevant is found, say so in one sentence, then answer briefly from general knowledge.
+4. Plain text only — no markdown, asterisks, backticks or # headers. Use "• " only if a short list is truly needed.
 ${
   relevant.length === 0
     ? 'Note: no relevant documents were found for this query.'
     : `Note: ${relevant.length} relevant document(s) are available above.`
 }`;
 
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
-    const result = await model.generateContent(prompt);
-    const answer = stripMarkdown(result.response.text());
+    // Cap the completion so answers stay short even if the model rambles.
+    const answer = stripMarkdown(await chatComplete(prompt, { maxTokens: 300 }));
 
     // Persist the turn.
     await supabase.from('chats').insert({
